@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.5'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.enactus'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = '17'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Web (REST controllers)
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // JPA + database access
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // Bean validation (@Valid, @NotNull, etc.)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Lombok — cuts boilerplate (getters/setters/constructors)
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Dev database — swap for postgres/mysql in production
+    runtimeOnly 'com.h2database:h2'
+
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

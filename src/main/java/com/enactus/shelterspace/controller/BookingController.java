@@ -3,6 +3,7 @@ package com.enactus.shelterspace.controller;
 import com.enactus.shelterspace.dto.BookingDecisionRequest;
 import com.enactus.shelterspace.dto.BookingRequest;
 import com.enactus.shelterspace.dto.BookingResponse;
+import com.enactus.shelterspace.dto.PublicBookingRequest;
 import com.enactus.shelterspace.service.BookingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,17 @@ public class BookingController {
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest()
                 .path("/{id}")
+                .buildAndExpand(createdBooking.id())
+                .toUri();
+        return ResponseEntity.created(location).body(createdBooking);
+    }
+
+    @PostMapping("/public")
+    public ResponseEntity<BookingResponse> createPublic(@Valid @RequestBody PublicBookingRequest request) {
+        BookingResponse createdBooking = bookingService.createPublicRequest(request);
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentContextPath()
+                .path("/api/bookings/{id}")
                 .buildAndExpand(createdBooking.id())
                 .toUri();
         return ResponseEntity.created(location).body(createdBooking);

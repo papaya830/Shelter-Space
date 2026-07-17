@@ -125,6 +125,48 @@ class BookingControllerTest {
     }
 
     @Test
+    void createPublicBookingReturns201AndCreatesGuestSummary() throws Exception {
+        mockMvc.perform(post("/api/bookings/public")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "shelterId": %d,
+                                  "displayName": "Casey",
+                                  "legalName": "Casey Rivera",
+                                  "phoneNumber": "604-555-3000",
+                                  "birthDate": "1992-06-04",
+                                  "requestedBedDate": "2026-07-18",
+                                  "intakeNotes": "Will arrive with a backpack"
+                                }
+                                """.formatted(availableShelter.getId())))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", containsString("/api/bookings/")))
+                .andExpect(jsonPath("$.status").value("REQUESTED"))
+                .andExpect(jsonPath("$.requestChannel").value("APP"))
+                .andExpect(jsonPath("$.requestedBy").value("Public Web"))
+                .andExpect(jsonPath("$.guest.displayName").value("Casey"))
+                .andExpect(jsonPath("$.guest.phoneNumber").value("604-555-3000"))
+                .andExpect(jsonPath("$.shelter.id").value(availableShelter.getId()));
+    }
+
+    @Test
+    void createPublicBookingReturns400ForInvalidPayload() throws Exception {
+        mockMvc.perform(post("/api/bookings/public")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "displayName": "",
+                                  "requestedBedDate": "2026-07-16"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.fields.shelterId").value("Shelter id is required"))
+                .andExpect(jsonPath("$.fields.displayName").value("Display name or alias is required"))
+                .andExpect(jsonPath("$.fields.requestedBedDate").value("Requested bed date cannot be in the past"));
+    }
+
+    @Test
     void listBookingsReturnsStaffReviewData() throws Exception {
         mockMvc.perform(get("/api/bookings"))
                 .andExpect(status().isOk())

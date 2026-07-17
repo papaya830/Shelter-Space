@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-07-17 Public Frontend
+
+### Added
+
+- public shelter browsing flow with list, detail, and booking request views inside the bundled Spring Boot SPA
+- `POST /api/bookings/public` for privacy-conscious public booking requests that create a guest profile and booking in one step
+- controller coverage for public booking request success and validation failures
+
+### Changed
+
+- split the bundled SPA into public and staff route groups so the public UI is the default landing experience and the staff console remains available at `/#/staff/dashboard`
+- updated `README.md` with public UI access, booking flow, API integration notes, and MVP limitations
+
+### Tests
+
+- verified the full Gradle test suite passes after the public booking endpoint and SPA routing changes
+
+## 2026-07-17 Staff Frontend
+
+### Added
+
+- bundled Spring Boot staff frontend served from `/` with booking queue, shelter availability, and shelter config screens
+- booking action workflow for admit, reject, check-in, and check-out using the live booking API
+- shelter edit form with inline validation mapped from backend error responses
+- frontend smoke test verifying the welcome-page route is wired to the bundled UI
+
+### Changed
+
+- updated `README.md` with staff frontend usage, local run flow, frontend/API integration notes, and current MVP limitations
+- kept shelter occupancy read-only in the frontend because the current shelter update API does not support direct occupancy edits
+
+### Tests
+
+- verified the full Gradle test suite passes with the bundled frontend assets included
+
 ## 2026-07-17
 
 ### Added

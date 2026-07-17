@@ -3,6 +3,7 @@ package com.enactus.shelterspace.service;
 import com.enactus.shelterspace.dto.BookingDecisionRequest;
 import com.enactus.shelterspace.dto.BookingRequest;
 import com.enactus.shelterspace.dto.BookingResponse;
+import com.enactus.shelterspace.dto.PublicBookingRequest;
 import com.enactus.shelterspace.exception.BookingConflictException;
 import com.enactus.shelterspace.exception.ResourceNotFoundException;
 import com.enactus.shelterspace.model.GuestProfile;
@@ -55,27 +56,33 @@ public class BookingService {
 
     @Transactional
     public BookingResponse createRequest(BookingRequest request) {
-        Shelter shelter = shelterRepository.findById(request.getShelterId())
-                .orElseThrow(() -> new ResourceNotFoundException("Shelter not found: " + request.getShelterId()));
+        Shelter shelter = getShelterEntity(request.getShelterId());
         GuestProfile guest = guestProfileRepository.findById(request.getGuestId())
                 .orElseThrow(() -> new ResourceNotFoundException("Guest not found: " + request.getGuestId()));
+        validateBookingPreconditions(shelter, guest);
+        return createBooking(shelter, guest, request.getRequestedBedDate(), request.getRequestChannel(),
+                request.getRequestedBy(), request.getIntakeNotes());
+    }
 
-        if (shelter.getOperationalStatus() == ShelterStatus.TEMPORARILY_CLOSED) {
-            throw new BookingConflictException("Cannot create a booking for a closed shelter");
-        }
-        if (shelterBookingRepository.existsByGuestIdAndStatusIn(guest.getId(), ACTIVE_GUEST_STATUSES)) {
-            throw new BookingConflictException("Guest already has an active booking lifecycle");
-        }
+    @Transactional
+    public BookingResponse createPublicRequest(PublicBookingRequest request) {
+        Shelter shelter = getShelterEntity(request.getShelterId());
 
-        ShelterBooking booking = new ShelterBooking();
-        booking.setShelter(shelter);
-        booking.setGuest(guest);
-        booking.setRequestedBedDate(request.getRequestedBedDate());
-        booking.setRequestChannel(request.getRequestChannel());
-        booking.setRequestedBy(trimToNull(request.getRequestedBy()));
-        booking.setIntakeNotes(trimToNull(request.getIntakeNotes()));
-        booking.setStatus(BookingStatus.REQUESTED);
-        return BookingResponse.fromEntity(shelterBookingRepository.save(booking));
+        GuestProfile guest = new GuestProfile();
+        guest.setDisplayName(trimToNull(request.getDisplayName()));
+        guest.setLegalName(trimToNull(request.getLegalName()));
+        guest.setBirthDate(request.getBirthDate());
+        guest.setPhoneNumber(trimToNull(request.getPhoneNumber()));
+        guest = guestProfileRepository.save(guest);
+
+        return createBooking(
+                shelter,
+                guest,
+                request.getRequestedBedDate(),
+                com.enactus.shelterspace.model.enums.BookingChannel.APP,
+                request.getRequestedBy() != null && !request.getRequestedBy().isBlank() ? request.getRequestedBy() : "Public Web",
+                request.getIntakeNotes()
+        );
     }
 
     @Transactional
@@ -177,6 +184,41 @@ public class BookingService {
     private ShelterBooking getBookingEntity(Long id) {
         return shelterBookingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
+    }
+
+    private Shelter getShelterEntity(Long id) {
+        return shelterRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Shelter not found: " + id));
+    }
+
+    private void validateBookingPreconditions(Shelter shelter, GuestProfile guest) {
+        if (shelter.getOperationalStatus() == ShelterStatus.TEMPORARILY_CLOSED) {
+            throw new BookingConflictException("Cannot create a booking for a closed shelter");
+        }
+        if (shelterBookingRepository.existsByGuestIdAndStatusIn(guest.getId(), ACTIVE_GUEST_STATUSES)) {
+            throw new BookingConflictException("Guest already has an active booking lifecycle");
+        }
+    }
+
+    private BookingResponse createBooking(
+            Shelter shelter,
+            GuestProfile guest,
+            java.time.LocalDate requestedBedDate,
+            com.enactus.shelterspace.model.enums.BookingChannel requestChannel,
+            String requestedBy,
+            String intakeNotes
+    ) {
+        validateBookingPreconditions(shelter, guest);
+
+        ShelterBooking booking = new ShelterBooking();
+        booking.setShelter(shelter);
+        booking.setGuest(guest);
+        booking.setRequestedBedDate(requestedBedDate);
+        booking.setRequestChannel(requestChannel);
+        booking.setRequestedBy(trimToNull(requestedBy));
+        booking.setIntakeNotes(trimToNull(intakeNotes));
+        booking.setStatus(BookingStatus.REQUESTED);
+        return BookingResponse.fromEntity(shelterBookingRepository.save(booking));
     }
 
     private String trimToNull(String value) {

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shelter-Space</title>
+    <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div id="root"></div>
+
+<dialog id="booking-action-dialog" class="dialog">
+    <form id="booking-action-form" method="dialog" class="dialog-form">
+        <div class="dialog-header">
+            <div>
+                <p class="eyebrow" id="dialog-action-label">Booking action</p>
+                <h3 id="dialog-title">Update booking</h3>
+            </div>
+            <button type="button" id="dialog-close" class="icon-button" aria-label="Close dialog">×</button>
+        </div>
+
+        <div id="dialog-booking-summary" class="dialog-summary"></div>
+
+        <label class="field">
+            <span>Staff name</span>
+            <input id="dialog-staff-name" name="staffName" maxlength="120" required>
+        </label>
+
+        <label class="field">
+            <span>Notes</span>
+            <textarea id="dialog-notes" name="notes" rows="4" maxlength="1000" placeholder="Add intake notes or decision context"></textarea>
+        </label>
+
+        <div id="dialog-error" class="form-error hidden"></div>
+
+        <div class="dialog-actions">
+            <button type="button" id="dialog-cancel" class="button ghost">Cancel</button>
+            <button type="submit" id="dialog-submit" class="button">Save action</button>
+        </div>
+    </form>
+</dialog>
+
+<script type="module" src="/assets/app.js"></script>
+</body>
+</html>

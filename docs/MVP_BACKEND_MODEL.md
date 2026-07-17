@@ -159,13 +159,21 @@ Current service rules:
 - a guest cannot have multiple active booking lifecycles at once
 - a closed shelter cannot accept a new booking request
 - a booking can only be admitted from `REQUESTED` or `WAITLISTED`
+- a booking can only be rejected from `REQUESTED` or `WAITLISTED`
 - admission increments shelter occupancy
+- check-in is only allowed from `ADMITTED`
 - checkout decrements shelter occupancy
+- cancellation is only allowed from `REQUESTED` or `WAITLISTED`
 - admission is blocked when shelter capacity is full
 
 Core logic:
 
 File: [src/main/java/com/enactus/shelterspace/service/BookingService.java](/Users/camille/Shelter-Space/src/main/java/com/enactus/shelterspace/service/BookingService.java:24)
+
+Booking API:
+
+- [src/main/java/com/enactus/shelterspace/controller/BookingController.java](/Users/camille/Shelter-Space/src/main/java/com/enactus/shelterspace/controller/BookingController.java:1)
+- [src/main/java/com/enactus/shelterspace/dto/BookingResponse.java](/Users/camille/Shelter-Space/src/main/java/com/enactus/shelterspace/dto/BookingResponse.java:1)
 
 ### 4. Turn-Away Logging
 
@@ -279,6 +287,7 @@ Current validation covers:
 - non-negative capacity and age bounds
 - booking request requires shelter, guest, date, and channel
 - booking decision requires staff name
+- invalid booking state transitions return conflict responses
 
 ## Tests
 
@@ -292,13 +301,22 @@ The current unit/integration-style service tests cover:
 - duplicate active booking lifecycles are blocked
 - requests to closed shelters are blocked
 
+Shelter API coverage:
+
+- [src/test/java/com/enactus/shelterspace/controller/ShelterControllerTest.java](/Users/camille/Shelter-Space/src/test/java/com/enactus/shelterspace/controller/ShelterControllerTest.java:1)
+- verifies list, detail, create, update, delete, validation failure, conflict behavior, and 404 behavior
+
+Booking API coverage:
+
+- [src/test/java/com/enactus/shelterspace/controller/BookingControllerTest.java](/Users/camille/Shelter-Space/src/test/java/com/enactus/shelterspace/controller/BookingControllerTest.java:1)
+- verifies create, list, detail, admit, reject, check-in, check-out, cancel, validation failure, conflict behavior, and 404 behavior
+
 ## Recommended Next Steps
 
-1. Add booking API endpoints around `BookingService`.
-2. Add a shelter list response DTO instead of returning entities directly.
-3. Introduce optimistic locking or another concurrency strategy before multi-user staff workflows.
-4. Add family/group modeling only when the product flow requires it.
-5. Replace H2 seed assumptions with PostgreSQL or Supabase-compatible migrations before deployment.
+1. Introduce optimistic locking or another concurrency strategy before multi-user staff workflows.
+2. Add family/group modeling only when the product flow requires it.
+3. Replace H2 seed assumptions with PostgreSQL or Supabase-compatible migrations before deployment.
+4. Add booking filters and staff-facing search once the dashboard requirements are clearer.
 
 ## Deferred Design Items
 

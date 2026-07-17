@@ -1,11 +1,12 @@
 package com.enactus.shelterspace.controller;
 
 import com.enactus.shelterspace.dto.ShelterRequest;
-import com.enactus.shelterspace.model.Shelter;
+import com.enactus.shelterspace.dto.ShelterResponse;
 import com.enactus.shelterspace.service.ShelterService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
 import java.util.List;
 
 @RestController
@@ -25,22 +27,28 @@ public class ShelterController {
     private final ShelterService shelterService;
 
     @GetMapping
-    public List<Shelter> getAll() {
+    public List<ShelterResponse> getAll() {
         return shelterService.getAll();
     }
 
     @GetMapping("/{id}")
-    public Shelter getById(@PathVariable Long id) {
+    public ShelterResponse getById(@PathVariable Long id) {
         return shelterService.getById(id);
     }
 
     @PostMapping
-    public ResponseEntity<Shelter> create(@Valid @RequestBody ShelterRequest request) {
-        return ResponseEntity.status(201).body(shelterService.create(request));
+    public ResponseEntity<ShelterResponse> create(@Valid @RequestBody ShelterRequest request) {
+        ShelterResponse createdShelter = shelterService.create(request);
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(createdShelter.id())
+                .toUri();
+        return ResponseEntity.created(location).body(createdShelter);
     }
 
     @PutMapping("/{id}")
-    public Shelter update(@PathVariable Long id, @Valid @RequestBody ShelterRequest request) {
+    public ShelterResponse update(@PathVariable Long id, @Valid @RequestBody ShelterRequest request) {
         return shelterService.update(id, request);
     }
 

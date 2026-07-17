@@ -2,10 +2,10 @@ package com.enactus.shelterspace.service;
 
 import com.enactus.shelterspace.dto.BookingDecisionRequest;
 import com.enactus.shelterspace.dto.BookingRequest;
+import com.enactus.shelterspace.dto.BookingResponse;
 import com.enactus.shelterspace.exception.BookingConflictException;
 import com.enactus.shelterspace.model.GuestProfile;
 import com.enactus.shelterspace.model.Shelter;
-import com.enactus.shelterspace.model.ShelterBooking;
 import com.enactus.shelterspace.model.enums.BarrierLevel;
 import com.enactus.shelterspace.model.enums.BookingChannel;
 import com.enactus.shelterspace.model.enums.BookingStatus;
@@ -82,25 +82,25 @@ class BookingServiceTest {
 
     @Test
     void admitConsumesCapacityAndCheckOutRestoresIt() {
-        ShelterBooking booking = bookingService.createRequest(buildRequest(firstGuest.getId()));
+        BookingResponse booking = bookingService.createRequest(buildRequest(firstGuest.getId()));
 
-        ShelterBooking admitted = bookingService.admit(booking.getId(), buildDecision("Staff One"));
-        assertThat(admitted.getStatus()).isEqualTo(BookingStatus.ADMITTED);
+        BookingResponse admitted = bookingService.admit(booking.id(), buildDecision("Staff One"));
+        assertThat(admitted.status()).isEqualTo(BookingStatus.ADMITTED);
         assertThat(shelterRepository.findById(shelter.getId()).orElseThrow().getCurrentOccupancy()).isEqualTo(1);
 
-        ShelterBooking checkedOut = bookingService.checkOut(booking.getId(), buildDecision("Staff Two"));
-        assertThat(checkedOut.getStatus()).isEqualTo(BookingStatus.CHECKED_OUT);
+        BookingResponse checkedOut = bookingService.checkOut(booking.id(), buildDecision("Staff Two"));
+        assertThat(checkedOut.status()).isEqualTo(BookingStatus.CHECKED_OUT);
         assertThat(shelterRepository.findById(shelter.getId()).orElseThrow().getCurrentOccupancy()).isEqualTo(0);
     }
 
     @Test
     void admitFailsWhenShelterIsFull() {
-        ShelterBooking firstBooking = bookingService.createRequest(buildRequest(firstGuest.getId()));
-        bookingService.admit(firstBooking.getId(), buildDecision("Staff One"));
+        BookingResponse firstBooking = bookingService.createRequest(buildRequest(firstGuest.getId()));
+        bookingService.admit(firstBooking.id(), buildDecision("Staff One"));
 
-        ShelterBooking secondBooking = bookingService.createRequest(buildRequest(secondGuest.getId()));
+        BookingResponse secondBooking = bookingService.createRequest(buildRequest(secondGuest.getId()));
 
-        assertThatThrownBy(() -> bookingService.admit(secondBooking.getId(), buildDecision("Staff Two")))
+        assertThatThrownBy(() -> bookingService.admit(secondBooking.id(), buildDecision("Staff Two")))
                 .isInstanceOf(BookingConflictException.class)
                 .hasMessageContaining("no beds available");
     }
@@ -122,6 +122,25 @@ class BookingServiceTest {
         assertThatThrownBy(() -> bookingService.createRequest(buildRequest(firstGuest.getId())))
                 .isInstanceOf(BookingConflictException.class)
                 .hasMessageContaining("closed shelter");
+    }
+
+    @Test
+    void checkInFailsWhenBookingWasNotAdmitted() {
+        BookingResponse booking = bookingService.createRequest(buildRequest(firstGuest.getId()));
+
+        assertThatThrownBy(() -> bookingService.checkIn(booking.id(), buildDecision("Staff One")))
+                .isInstanceOf(BookingConflictException.class)
+                .hasMessageContaining("Only admitted bookings can be checked in");
+    }
+
+    @Test
+    void cancelMovesRequestedBookingToCancelled() {
+        BookingResponse booking = bookingService.createRequest(buildRequest(firstGuest.getId()));
+
+        BookingResponse cancelled = bookingService.cancel(booking.id(), buildDecision("Staff One"));
+
+        assertThat(cancelled.status()).isEqualTo(BookingStatus.CANCELLED);
+        assertThat(cancelled.decidedBy()).isEqualTo("Staff One");
     }
 
     private BookingRequest buildRequest(Long guestId) {

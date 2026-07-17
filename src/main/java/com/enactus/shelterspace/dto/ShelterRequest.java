@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.AssertTrue;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -89,4 +90,14 @@ public class ShelterRequest {
 
     @Size(max = 1000)
     private String perks;
+
+    @AssertTrue(message = "Maximum age must be greater than or equal to minimum age")
+    public boolean isAgeRangeValid() {
+        return minimumAge == null || maximumAge == null || maximumAge >= minimumAge;
+    }
+
+    @AssertTrue(message = "Intake cutoff time must be after intake start time")
+    public boolean isIntakeWindowValid() {
+        return intakeStartTime == null || intakeCutoffTime == null || intakeCutoffTime.isAfter(intakeStartTime);
+    }
 }

@@ -1,10 +1,12 @@
 package com.enactus.shelterspace.service;
 
 import com.enactus.shelterspace.dto.ShelterRequest;
+import com.enactus.shelterspace.dto.ShelterResponse;
 import com.enactus.shelterspace.exception.ResourceNotFoundException;
 import com.enactus.shelterspace.model.Shelter;
 import com.enactus.shelterspace.repository.ShelterRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -15,43 +17,50 @@ public class ShelterService {
 
     private final ShelterRepository shelterRepository;
 
-    public List<Shelter> getAll() {
-        return shelterRepository.findAll();
+    public List<ShelterResponse> getAll() {
+        return shelterRepository.findAll(Sort.by(Sort.Order.asc("city"), Sort.Order.asc("name")))
+                .stream()
+                .map(ShelterResponse::fromEntity)
+                .toList();
     }
 
-    public Shelter getById(Long id) {
-        return shelterRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Shelter not found: " + id));
+    public ShelterResponse getById(Long id) {
+        return ShelterResponse.fromEntity(getShelterEntity(id));
     }
 
-    public Shelter create(ShelterRequest request) {
+    public ShelterResponse create(ShelterRequest request) {
         Shelter shelter = new Shelter();
         applyRequest(shelter, request);
         shelter.setCurrentOccupancy(0);
-        return shelterRepository.save(shelter);
+        return ShelterResponse.fromEntity(shelterRepository.save(shelter));
     }
 
-    public Shelter update(Long id, ShelterRequest request) {
-        Shelter shelter = getById(id);
+    public ShelterResponse update(Long id, ShelterRequest request) {
+        Shelter shelter = getShelterEntity(id);
         if (request.getTotalCapacity() < shelter.getCurrentOccupancy()) {
             throw new IllegalArgumentException("Capacity cannot be lower than current occupancy");
         }
         applyRequest(shelter, request);
-        return shelterRepository.save(shelter);
+        return ShelterResponse.fromEntity(shelterRepository.save(shelter));
     }
 
     public void delete(Long id) {
-        Shelter shelter = getById(id);
+        Shelter shelter = getShelterEntity(id);
         shelterRepository.delete(shelter);
     }
 
+    private Shelter getShelterEntity(Long id) {
+        return shelterRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Shelter not found: " + id));
+    }
+
     private void applyRequest(Shelter shelter, ShelterRequest request) {
-        shelter.setName(request.getName());
-        shelter.setOrganizationName(request.getOrganizationName());
-        shelter.setCity(request.getCity());
-        shelter.setAddress(request.getAddress());
+        shelter.setName(trimToNull(request.getName()));
+        shelter.setOrganizationName(trimToNull(request.getOrganizationName()));
+        shelter.setCity(trimToNull(request.getCity()));
+        shelter.setAddress(trimToNull(request.getAddress()));
         shelter.setConfidentialAddress(request.isConfidentialAddress());
-        shelter.setPhoneNumber(request.getPhoneNumber());
+        shelter.setPhoneNumber(trimToNull(request.getPhoneNumber()));
         shelter.setOperationalStatus(request.getOperationalStatus());
         shelter.setBarrierLevel(request.getBarrierLevel());
         shelter.setPopulationType(request.getPopulationType());
@@ -68,10 +77,18 @@ public class ShelterService {
         shelter.setMaxStayDays(request.getMaxStayDays());
         shelter.setMinimumAge(request.getMinimumAge());
         shelter.setMaximumAge(request.getMaximumAge());
-        shelter.setPrograms(request.getPrograms());
-        shelter.setRules(request.getRules());
-        shelter.setIntakeInstructions(request.getIntakeInstructions());
-        shelter.setNotes(request.getNotes());
-        shelter.setPerks(request.getPerks());
+        shelter.setPrograms(trimToNull(request.getPrograms()));
+        shelter.setRules(trimToNull(request.getRules()));
+        shelter.setIntakeInstructions(trimToNull(request.getIntakeInstructions()));
+        shelter.setNotes(trimToNull(request.getNotes()));
+        shelter.setPerks(trimToNull(request.getPerks()));
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

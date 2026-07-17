@@ -1,27 +1,24 @@
 package com.enactus.shelterspace.controller;
 
 import com.enactus.shelterspace.dto.ShelterRequest;
-import com.enactus.shelterspace.model.Shelter;
+import com.enactus.shelterspace.dto.ShelterResponse;
 import com.enactus.shelterspace.service.ShelterService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
 import java.util.List;
 
-/**
- * REST layer. Maps HTTP requests to service calls.
- *
- * @RestController      = this class returns data (JSON), not view names.
- * @RequestMapping      = base path for every endpoint below.
- *
- * The annotations you'll need per method:
- *   @GetMapping, @PostMapping, @PutMapping, @DeleteMapping
- *   @PathVariable  -> pull {id} out of the URL
- *   @RequestBody   -> parse the JSON body into a ShelterRequest
- *   @Valid         -> trigger the validation annotations on the DTO
- */
 @RestController
 @RequestMapping("/api/shelters")
 @RequiredArgsConstructor
@@ -29,56 +26,35 @@ public class ShelterController {
 
     private final ShelterService shelterService;
 
-    /**
-     * GET /api/shelters  -> list all
-     * TODO: call the service and return the list.
-     */
     @GetMapping
-    public List<Shelter> getAll() {
-        // TODO: implement
-        return null;
+    public List<ShelterResponse> getAll() {
+        return shelterService.getAll();
     }
 
-    /**
-     * GET /api/shelters/{id}  -> one shelter
-     * TODO: grab the id from the path, return the shelter.
-     */
     @GetMapping("/{id}")
-    public Shelter getById(/* TODO: @PathVariable */ Long id) {
-        // TODO: implement
-        return null;
+    public ShelterResponse getById(@PathVariable Long id) {
+        return shelterService.getById(id);
     }
 
-    /**
-     * POST /api/shelters  -> create
-     * TODO:
-     *   - accept a validated request body
-     *   - call the service
-     *   - return 201 Created (look at ResponseEntity for setting status)
-     */
     @PostMapping
-    public ResponseEntity<Shelter> create(/* TODO: @Valid @RequestBody */ ShelterRequest request) {
-        // TODO: implement
-        return null;
+    public ResponseEntity<ShelterResponse> create(@Valid @RequestBody ShelterRequest request) {
+        ShelterResponse createdShelter = shelterService.create(request);
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(createdShelter.id())
+                .toUri();
+        return ResponseEntity.created(location).body(createdShelter);
     }
 
-    /**
-     * PUT /api/shelters/{id}  -> update
-     * TODO: combine @PathVariable id + @Valid @RequestBody request.
-     */
     @PutMapping("/{id}")
-    public Shelter update(Long id, ShelterRequest request) {
-        // TODO: implement
-        return null;
+    public ShelterResponse update(@PathVariable Long id, @Valid @RequestBody ShelterRequest request) {
+        return shelterService.update(id, request);
     }
 
-    /**
-     * DELETE /api/shelters/{id}  -> delete
-     * TODO: call the service, return 204 No Content.
-     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(Long id) {
-        // TODO: implement
-        return null;
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        shelterService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

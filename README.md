@@ -19,7 +19,7 @@ The current build includes:
 - shelter capacity and derived bed availability
 - minimal guest profile data
 - booking request and admission lifecycle logic with REST endpoints
-- optional turn-away logging
+- staff turn-away logging with structured reasons and recent history
 - local seed data for development and testing
 - bundled public shelter UI at `/`
 - bundled staff console at `/#/staff/dashboard`
@@ -49,7 +49,7 @@ Included MVP screens:
 1. `Shelter List`
    - browses all shelters from `GET /api/shelters`
    - shows availability, operational status, population served, barrier level, and key accessibility flags
-   - supports simple search plus filters for available beds, wheelchair access, and pets
+   - supports search plus practical filters for barrier level, population type, available beds, open now, call ahead, wheelchair access, and pets
 2. `Shelter Detail`
    - shows intake instructions, intake type, intake window, rules, programs, perks, age limits, max stay, and service population
    - makes availability and intake-related flags easy to scan
@@ -75,13 +75,17 @@ Included MVP screens:
 1. `Booking Queue`
    - live booking table for staff review
    - status chips for `REQUESTED`, `WAITLISTED`, `ADMITTED`, `CHECKED_IN`, `REJECTED`, `CANCELLED`, and `CHECKED_OUT`
-   - admit, reject, check-in, and check-out actions wired to the existing booking API
+   - admit, waitlist, reject, check-in, and check-out actions wired to the booking API
    - API success and error feedback surfaced in the UI
 2. `Shelter Availability`
    - scanable shelter cards with capacity, occupancy, and available beds
    - shelter status, intake type, barrier level, and population served
    - visual emphasis for nearly full and full shelters
-3. `Shelter Config`
+3. `Turn-Away Logs`
+   - quick staff form for recording turn-aways against a shelter
+   - structured reasons, staff attribution, optional guest association, occurred-at timestamp, and notes
+   - recent shelter-specific history view for impact and demand reporting
+4. `Shelter Config`
    - edit existing shelter details against `PUT /api/shelters/{id}`
    - validation errors mapped from backend field responses
    - occupancy is shown as read-only because the current shelter update API does not accept direct occupancy edits
@@ -117,12 +121,15 @@ Main API integrations:
 
 - `GET /api/bookings`
 - `POST /api/bookings/public`
+- `POST /api/bookings/{id}/waitlist`
 - `POST /api/bookings/{id}/admit`
 - `POST /api/bookings/{id}/reject`
 - `POST /api/bookings/{id}/check-in`
 - `POST /api/bookings/{id}/check-out`
 - `GET /api/shelters`
 - `PUT /api/shelters/{id}`
+- `GET /api/turn-away-logs`
+- `POST /api/turn-away-logs`
 
 ## Local Database
 
@@ -217,6 +224,74 @@ Base path:
 ### `POST /api/bookings`
 
 Creates a booking request.
+
+### `POST /api/bookings/{id}/waitlist`
+
+Moves a requested booking into `WAITLISTED`.
+
+Behavior:
+
+- accepts the same staff decision payload as admit and reject
+- only allowed from `REQUESTED`
+- returns `409 Conflict` for invalid lifecycle transitions
+
+Waitlist notes:
+
+- waitlisted requests stay visible in the staff queue
+- staff can still admit or reject a waitlisted booking later
+- public booking requests still begin in `REQUESTED`; waitlisting is a staff workflow
+
+## Turn-Away API
+
+Base path:
+
+- `/api/turn-away-logs`
+
+### `GET /api/turn-away-logs`
+
+Returns recent turn-away logs in reverse chronological order.
+
+Optional query parameters:
+
+- `shelterId` to limit the history to one shelter
+
+Response includes:
+
+- shelter summary
+- optional guest summary
+- turn-away reason
+- notes
+- `occurredAt`
+- `recordedBy`
+
+### `POST /api/turn-away-logs`
+
+Creates a new turn-away log.
+
+Required fields:
+
+- `shelterId`
+- `reason`
+- `recordedBy`
+
+Optional fields:
+
+- `guestId`
+- `occurredAt` (defaults to now when omitted)
+- `notes`
+
+Behavior:
+
+- returns `201 Created` with `Location` header
+- validates required fields and enum values
+- returns `404 Not Found` when the shelter or optional guest does not exist
+
+## MVP Notes And Limitations
+
+- public shelter filters currently run in the bundled SPA against live shelter data already loaded from the API
+- `open now` is derived from `open24Hours`, shelter operational status, and intake start/cutoff times when those times are present
+- turn-away logs are intentionally simple operational records and do not yet include referrals, attachments, or full reporting dashboards
+- waitlist ordering and prioritization are intentionally out of scope for the current MVP
 
 Required request fields:
 

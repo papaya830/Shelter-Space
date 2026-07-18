@@ -175,6 +175,10 @@ Booking API:
 - [src/main/java/com/enactus/shelterspace/controller/BookingController.java](/Users/camille/Shelter-Space/src/main/java/com/enactus/shelterspace/controller/BookingController.java:1)
 - [src/main/java/com/enactus/shelterspace/dto/BookingResponse.java](/Users/camille/Shelter-Space/src/main/java/com/enactus/shelterspace/dto/BookingResponse.java:1)
 
+Notable workflow endpoint:
+
+- `POST /api/bookings/{id}/waitlist`
+
 ### 4. Turn-Away Logging
 
 Entity: `TurnAwayLog`
@@ -195,6 +199,11 @@ Key fields:
 - `recordedBy`
 
 This is intentionally simple. It gives the team a place to capture refusal or capacity events without building a full incident system.
+
+API support:
+
+- `GET /api/turn-away-logs`
+- `POST /api/turn-away-logs`
 
 ## Enum Strategy
 

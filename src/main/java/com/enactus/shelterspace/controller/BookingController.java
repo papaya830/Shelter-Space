@@ -63,6 +63,11 @@ public class BookingController {
         return bookingService.admit(id, request);
     }
 
+    @PostMapping("/{id}/waitlist")
+    public BookingResponse waitlist(@PathVariable Long id, @Valid @RequestBody BookingDecisionRequest request) {
+        return bookingService.waitlist(id, request);
+    }
+
     @PostMapping("/{id}/reject")
     public BookingResponse reject(@PathVariable Long id, @Valid @RequestBody BookingDecisionRequest request) {
         return bookingService.reject(id, request);

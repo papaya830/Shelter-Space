@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-18 Operations And Discovery
+
+### Added
+
+- `GET /api/turn-away-logs` and `POST /api/turn-away-logs` with DTO-based responses, validation, optional guest association, and recent-history support
+- staff turn-away logging screen in the bundled SPA with a quick entry form and shelter-scoped recent history
+- explicit `POST /api/bookings/{id}/waitlist` endpoint and controller coverage
+- public shelter filters for barrier level, population type, open now, call ahead, wheelchair access, pets, and available beds
+
+### Changed
+
+- updated the staff booking queue to surface `WAITLISTED` distinctly from `REQUESTED` and allow staff to move requested bookings onto the waitlist
+- updated `README.md` and backend model docs with turn-away logging, waitlist behavior, and public filter documentation
+
+### Tests
+
+- added booking controller coverage for the explicit waitlist transition
+- added controller integration coverage for turn-away log listing, shelter filtering, creation, and validation
+- verified the full Gradle test suite passes with the new operations and discovery features
+
 ## 2026-07-17 Public Frontend
 
 ### Added

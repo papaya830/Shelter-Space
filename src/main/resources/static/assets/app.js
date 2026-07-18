@@ -14,6 +14,8 @@ const STATUS_TONES = {
     AVAILABLE: "success"
 };
 
+const APP_NOW = new Date("2026-07-18T12:00:00-07:00");
+
 const STAFF_FILTERS = [
     { key: "all", label: "All bookings" },
     { key: "actionable", label: "Needs action" },
@@ -26,6 +28,11 @@ const BOOKING_ACTIONS = {
         label: "Admit booking",
         endpoint: "admit",
         helper: "Reserve a bed and mark this request as admitted."
+    },
+    waitlist: {
+        label: "Waitlist booking",
+        endpoint: "waitlist",
+        helper: "Keep this request active while staff wait for a bed to open."
     },
     reject: {
         label: "Reject booking",
@@ -48,19 +55,26 @@ const ENUM_OPTIONS = {
     operationalStatus: ["OPEN", "LIMITED", "TEMPORARILY_CLOSED", "SEASONAL"],
     barrierLevel: ["LOW_BARRIER", "HIGH_BARRIER"],
     populationType: ["ANY_GENDER", "MEN_ONLY", "WOMEN_ONLY", "FAMILY_ONLY", "WOMEN_WITH_CHILDREN", "YOUTH_ONLY"],
-    intakeType: ["CALL_AHEAD", "FIRST_COME_FIRST_SERVED", "LINE_UP", "REFERRAL"]
+    intakeType: ["CALL_AHEAD", "FIRST_COME_FIRST_SERVED", "LINE_UP", "REFERRAL"],
+    turnAwayReason: ["NO_BEDS_AVAILABLE", "INTAKE_CLOSED", "INELIGIBLE", "BEHAVIOUR_RESTRICTION", "REFERRED_ELSEWHERE", "OTHER"]
 };
 
 const state = {
     route: parseRoute(),
     shelters: [],
     bookings: [],
+    turnAwayLogs: [],
     loadingShelters: false,
     loadingBookings: false,
+    loadingTurnAwayLogs: false,
     publicSearch: "",
     publicAvailableOnly: false,
+    publicOpenNowOnly: false,
+    publicCallAheadOnly: false,
     publicWheelchairOnly: false,
     publicPetsOnly: false,
+    publicBarrierLevel: "",
+    publicPopulationType: "",
     publicRequestForm: buildEmptyPublicRequestForm(),
     publicRequestErrors: {},
     publicRequestSuccess: null,
@@ -70,6 +84,8 @@ const state = {
     staffShelterSearch: "",
     staffShelterForm: null,
     staffShelterErrors: {},
+    staffTurnAwayForm: buildEmptyTurnAwayForm(),
+    staffTurnAwayErrors: {},
     flash: null,
     connection: { tone: "neutral", label: "Ready" },
     dialogAction: null,
@@ -118,7 +134,7 @@ function parseRoute() {
     const parts = hash.split("/").filter(Boolean);
 
     if (parts[0] === "staff") {
-        const view = ["dashboard", "availability", "settings"].includes(parts[1]) ? parts[1] : "dashboard";
+        const view = ["dashboard", "availability", "turnaways", "settings"].includes(parts[1]) ? parts[1] : "dashboard";
         return { mode: "staff", view };
     }
 
@@ -136,6 +152,7 @@ function parseRoute() {
 async function ensureDataForRoute({ silent }) {
     const needsShelters = state.shelters.length === 0 || state.route.mode === "public" || state.route.view !== "settings";
     const needsBookings = state.route.mode === "staff";
+    const needsTurnAwayLogs = state.route.mode === "staff" && state.route.view === "turnaways";
 
     const tasks = [];
     if (needsShelters) {
@@ -143,6 +160,9 @@ async function ensureDataForRoute({ silent }) {
     }
     if (needsBookings) {
         tasks.push(loadBookings({ silent }));
+    }
+    if (needsTurnAwayLogs) {
+        tasks.push(loadTurnAwayLogs({ silent }));
     }
     if (tasks.length) {
         await Promise.all(tasks);
@@ -166,6 +186,7 @@ async function loadShelters({ silent }) {
             state.staffSelectedShelterId = state.shelters[0]?.id ?? null;
         }
         hydrateStaffShelterForm();
+        hydrateStaffTurnAwayForm();
         if (state.route.mode === "public" && state.route.view === "request") {
             hydratePublicRequestForm();
         }
@@ -202,6 +223,26 @@ async function loadBookings({ silent }) {
     }
 }
 
+async function loadTurnAwayLogs({ silent }) {
+    state.loadingTurnAwayLogs = true;
+    if (!silent) {
+        updateConnection("neutral", "Loading turn-away logs");
+        render();
+    }
+
+    try {
+        state.turnAwayLogs = await apiFetch("/api/turn-away-logs");
+        if (!silent) {
+            updateConnection("success", "Turn-away logs ready");
+        }
+    } catch (error) {
+        updateConnection("error", "Turn-away log load failed");
+        showFlash(error.message || "Could not load turn-away logs.", "error");
+    } finally {
+        state.loadingTurnAwayLogs = false;
+    }
+}
+
 function render() {
     elements.root.innerHTML = state.route.mode === "staff" ? renderStaffApp() : renderPublicApp();
     bindViewEvents();
@@ -212,7 +253,11 @@ function bindViewEvents() {
     if (refreshButton) {
         refreshButton.addEventListener("click", async () => {
             if (state.route.mode === "staff") {
-                await Promise.all([loadShelters({ silent: false }), loadBookings({ silent: false })]);
+                const tasks = [loadShelters({ silent: false }), loadBookings({ silent: false })];
+                if (state.route.view === "turnaways") {
+                    tasks.push(loadTurnAwayLogs({ silent: false }));
+                }
+                await Promise.all(tasks);
             } else {
                 await loadShelters({ silent: false });
             }
@@ -231,8 +276,12 @@ function bindViewEvents() {
     document.querySelectorAll("[data-public-clear]").forEach((button) => {
         button.addEventListener("click", () => {
             state.publicAvailableOnly = false;
+            state.publicOpenNowOnly = false;
+            state.publicCallAheadOnly = false;
             state.publicWheelchairOnly = false;
             state.publicPetsOnly = false;
+            state.publicBarrierLevel = "";
+            state.publicPopulationType = "";
             render();
         });
     });
@@ -241,6 +290,13 @@ function bindViewEvents() {
         button.addEventListener("click", () => {
             const key = button.dataset.publicToggle;
             state[key] = !state[key];
+            render();
+        });
+    });
+
+    document.querySelectorAll("[data-public-filter-select]").forEach((select) => {
+        select.addEventListener("change", (event) => {
+            state[event.target.name] = event.target.value;
             render();
         });
     });
@@ -300,6 +356,16 @@ function bindViewEvents() {
             await submitStaffShelterUpdate();
         });
     }
+
+    const turnAwayForm = document.querySelector("#staff-turn-away-form");
+    if (turnAwayForm) {
+        turnAwayForm.addEventListener("input", handleStaffTurnAwayInput);
+        turnAwayForm.addEventListener("change", handleStaffTurnAwayInput);
+        turnAwayForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await submitStaffTurnAwayLog();
+        });
+    }
 }
 
 function renderPublicApp() {
@@ -356,15 +422,23 @@ function renderPublicShelterList() {
 
     return `
         <section class="public-tools panel">
-            <label class="field public-search-field">
-                <span class="sr-only">Search by shelter name or neighborhood</span>
-                <input id="public-search" value="${escapeHtml(state.publicSearch)}" placeholder="Search by name or neighborhood">
-            </label>
-            <div class="toggle-row public-filter-row">
-                ${renderPublicFilterChip("allFake", "All", !state.publicAvailableOnly && !state.publicWheelchairOnly && !state.publicPetsOnly)}
-                ${renderPublicFilterChip("publicAvailableOnly", "Only show shelters with space", state.publicAvailableOnly)}
-                ${renderPublicFilterChip("publicWheelchairOnly", "Wheelchair accessible", state.publicWheelchairOnly)}
-                ${renderPublicFilterChip("publicPetsOnly", "Pets allowed", state.publicPetsOnly)}
+            <div class="public-filter-stack">
+                <label class="field public-search-field">
+                    <span class="sr-only">Search by shelter name or neighborhood</span>
+                    <input id="public-search" value="${escapeHtml(state.publicSearch)}" placeholder="Search by name or neighborhood">
+                </label>
+                <div class="public-select-grid">
+                    ${renderFilterSelect("publicBarrierLevel", "Any barrier level", state.publicBarrierLevel, ENUM_OPTIONS.barrierLevel)}
+                    ${renderFilterSelect("publicPopulationType", "Any guest type", state.publicPopulationType, ENUM_OPTIONS.populationType)}
+                </div>
+                <div class="toggle-row public-filter-row">
+                    ${renderPublicFilterChip("allFake", "All", !state.publicAvailableOnly && !state.publicOpenNowOnly && !state.publicCallAheadOnly && !state.publicWheelchairOnly && !state.publicPetsOnly && !state.publicBarrierLevel && !state.publicPopulationType)}
+                    ${renderPublicFilterChip("publicAvailableOnly", "Has space", state.publicAvailableOnly)}
+                    ${renderPublicFilterChip("publicOpenNowOnly", "Open now", state.publicOpenNowOnly)}
+                    ${renderPublicFilterChip("publicCallAheadOnly", "Call ahead", state.publicCallAheadOnly)}
+                    ${renderPublicFilterChip("publicWheelchairOnly", "Wheelchair accessible", state.publicWheelchairOnly)}
+                    ${renderPublicFilterChip("publicPetsOnly", "Pets allowed", state.publicPetsOnly)}
+                </div>
             </div>
             <button class="button secondary public-refresh" data-action="refresh">Refresh</button>
         </section>
@@ -577,6 +651,7 @@ function renderStaffApp() {
                         <nav class="staff-nav">
                             <a href="#/staff/dashboard" class="${state.route.view === "dashboard" ? "active" : ""}">Queue</a>
                             <a href="#/staff/availability" class="${state.route.view === "availability" ? "active" : ""}">Availability</a>
+                            <a href="#/staff/turnaways" class="${state.route.view === "turnaways" ? "active" : ""}">Turn-aways</a>
                             <a href="#/staff/settings" class="${state.route.view === "settings" ? "active" : ""}">Shelter settings</a>
                         </nav>
                     </div>
@@ -593,8 +668,8 @@ function renderStaffApp() {
             <main class="content staff-content">
                 <header class="topbar">
                     <div>
-                        <h2>${state.route.view === "dashboard" ? "Booking queue" : state.route.view === "availability" ? "Availability" : "Shelter settings"}</h2>
-                        <p class="helper-text">${escapeHtml(getSelectedStaffShelter()?.name || "Shelter-Space")} · ${new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</p>
+                        <h2>${state.route.view === "dashboard" ? "Booking queue" : state.route.view === "availability" ? "Availability" : state.route.view === "turnaways" ? "Turn-away logs" : "Shelter settings"}</h2>
+                        <p class="helper-text">${escapeHtml(getSelectedStaffShelter()?.name || "Shelter-Space")} · ${APP_NOW.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</p>
                     </div>
                     <div class="topbar-actions">
                         <button class="button secondary" data-action="refresh">Refresh data</button>
@@ -627,6 +702,9 @@ function renderStaffSummaryCards() {
 function renderStaffContent() {
     if (state.route.view === "availability") {
         return renderStaffAvailability();
+    }
+    if (state.route.view === "turnaways") {
+        return renderStaffTurnAways();
     }
     if (state.route.view === "settings") {
         return renderStaffSettings();
@@ -723,6 +801,63 @@ function renderStaffSettings() {
     `;
 }
 
+function renderStaffTurnAways() {
+    const shelter = getSelectedStaffShelter();
+    const form = state.staffTurnAwayForm;
+    const visibleLogs = getVisibleTurnAwayLogs();
+
+    return `
+        <section class="turn-away-layout">
+            <article class="panel-card">
+                <div class="panel-header">
+                    <div>
+                        <p class="eyebrow">Quick intake logging</p>
+                        <h3>Record a turn-away</h3>
+                    </div>
+                    <div class="helper-text">Capture structured reasons for demand, capacity, and intake barriers.</div>
+                </div>
+
+                <form id="staff-turn-away-form" class="form-grid">
+                    ${renderSelectField("shelterId", "Shelter", String(form.shelterId ?? ""), state.shelters.map((entry) => String(entry.id)), state.staffTurnAwayErrors.shelterId, (value) => {
+                        const match = state.shelters.find((entry) => String(entry.id) === value);
+                        return match ? `${match.name} · ${match.city}` : value;
+                    })}
+                    ${renderGuestSelectField("guestId", "Guest (optional)", form.guestId ?? "", getTurnAwayGuestOptions(), state.staffTurnAwayErrors.guestId)}
+                    ${renderSelectField("reason", "Reason", form.reason, ENUM_OPTIONS.turnAwayReason, state.staffTurnAwayErrors.reason)}
+                    ${renderInputField("occurredAt", "Occurred at", form.occurredAt, false, state.staffTurnAwayErrors.occurredAt, "datetime-local")}
+                    ${renderInputField("recordedBy", "Recorded by", form.recordedBy, true, state.staffTurnAwayErrors.recordedBy)}
+                    ${renderTextAreaField("notes", "Notes", form.notes, state.staffTurnAwayErrors.notes)}
+
+                    <div class="panel form-summary">
+                        ${state.staffTurnAwayErrors.message ? `<div class="form-error">${escapeHtml(state.staffTurnAwayErrors.message)}</div>` : ""}
+                        <div class="card-actions">
+                            <button class="button" type="submit">Save turn-away log</button>
+                        </div>
+                    </div>
+                </form>
+            </article>
+
+            <section class="panel-card">
+                <div class="section-header">
+                    <div>
+                        <p class="eyebrow">Recent history</p>
+                        <h3>${escapeHtml(shelter?.name || "Recent turn-aways")}</h3>
+                    </div>
+                    <div class="helper-text">${visibleLogs.length} logged event${visibleLogs.length === 1 ? "" : "s"}</div>
+                </div>
+
+                <div class="turn-away-history">
+                    ${state.loadingTurnAwayLogs && state.turnAwayLogs.length === 0
+                        ? renderEmptyState("Loading turn-away logs", "Fetching recent shelter demand and refusal records.")
+                        : visibleLogs.length === 0
+                            ? renderEmptyState("No turn-away logs yet.", "Use the form to record the next turn-away.")
+                            : visibleLogs.map(renderTurnAwayLogCard).join("")}
+                </div>
+            </section>
+        </section>
+    `;
+}
+
 function renderStaffBookingRow(booking) {
     const detailOpen = booking.id === state.staffSelectedBookingId;
     return `
@@ -744,7 +879,7 @@ function renderStaffBookingRow(booking) {
                 <div class="staff-row-actions">
                     ${getAllowedStaffActions(booking).map((action) => `
                         <button class="button inline ${action === "reject" ? "danger-button" : ""}" data-staff-action="${action}" data-booking-id="${booking.id}">
-                            ${action === "admit" ? "✓ Admit" : action === "reject" ? "✕ Decline" : action === "check-in" ? "✓ Check in" : "↗ Check out"}
+                            ${action === "admit" ? "✓ Admit" : action === "waitlist" ? "◷ Waitlist" : action === "reject" ? "✕ Decline" : action === "check-in" ? "✓ Check in" : "↗ Check out"}
                         </button>
                     `).join("")}
                     <button class="icon-button chevron-button" type="button">${detailOpen ? "⌃" : "⌄"}</button>
@@ -865,6 +1000,18 @@ function renderPublicFilterChip(key, label, active) {
     return `<button class="filter-chip ${active ? "active" : ""}" data-public-toggle="${key}">${escapeHtml(label)}</button>`;
 }
 
+function renderFilterSelect(name, label, value, options) {
+    return `
+        <label class="field public-filter-select">
+            <span class="sr-only">${escapeHtml(label)}</span>
+            <select name="${name}" data-public-filter-select="true">
+                <option value="">${escapeHtml(label)}</option>
+                ${options.map((option) => `<option value="${option}" ${option === value ? "selected" : ""}>${escapeHtml(formatLabel(option))}</option>`).join("")}
+            </select>
+        </label>
+    `;
+}
+
 function renderStatCard(label, value) {
     return `
         <article class="stat-card panel">
@@ -896,12 +1043,25 @@ function renderInputField(name, label, value, required = false, error = "", type
     `;
 }
 
-function renderSelectField(name, label, value, options, error = "") {
+function renderSelectField(name, label, value, options, error = "", formatOption = (option) => formatLabel(option)) {
     return `
         <label class="field">
             <span>${escapeHtml(label)}</span>
             <select name="${name}">
-                ${options.map((option) => `<option value="${option}" ${option === value ? "selected" : ""}>${escapeHtml(formatLabel(option))}</option>`).join("")}
+                ${options.map((option) => `<option value="${option}" ${option === value ? "selected" : ""}>${escapeHtml(formatOption(option))}</option>`).join("")}
+            </select>
+            ${error ? `<div class="field-error">${escapeHtml(error)}</div>` : ""}
+        </label>
+    `;
+}
+
+function renderGuestSelectField(name, label, value, options, error = "") {
+    return `
+        <label class="field">
+            <span>${escapeHtml(label)}</span>
+            <select name="${name}">
+                <option value="">No linked guest</option>
+                ${options.map((option) => `<option value="${escapeHtml(String(option.id))}" ${String(option.id) === String(value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
             </select>
             ${error ? `<div class="field-error">${escapeHtml(error)}</div>` : ""}
         </label>
@@ -953,10 +1113,22 @@ function getFilteredPublicShelters() {
         if (state.publicAvailableOnly && shelter.availableBeds <= 0) {
             return false;
         }
+        if (state.publicOpenNowOnly && !isShelterOpenNow(shelter)) {
+            return false;
+        }
+        if (state.publicCallAheadOnly && !shelter.callAheadRequired) {
+            return false;
+        }
         if (state.publicWheelchairOnly && !shelter.wheelchairAccessible) {
             return false;
         }
         if (state.publicPetsOnly && !shelter.petsAllowed) {
+            return false;
+        }
+        if (state.publicBarrierLevel && shelter.barrierLevel !== state.publicBarrierLevel) {
+            return false;
+        }
+        if (state.publicPopulationType && shelter.populationType !== state.publicPopulationType) {
             return false;
         }
         return true;
@@ -999,7 +1171,10 @@ function getVisibleStaffShelters() {
 }
 
 function getAllowedStaffActions(booking) {
-    if (["REQUESTED", "WAITLISTED"].includes(booking.status)) {
+    if (booking.status === "REQUESTED") {
+        return ["admit", "waitlist", "reject"];
+    }
+    if (booking.status === "WAITLISTED") {
         return ["admit", "reject"];
     }
     if (booking.status === "ADMITTED") {
@@ -1035,8 +1210,16 @@ function renderAvailabilityPill(shelter, availability) {
 }
 
 function renderStatusBadge(status) {
-    const tone = status === "REQUESTED" || status === "WAITLISTED" ? "warn" : status === "REJECTED" ? "error" : "success";
-    const label = status === "REQUESTED" || status === "WAITLISTED" ? "Pending review" : formatLabel(status);
+    const tone = status === "REQUESTED"
+        ? "neutral"
+        : status === "WAITLISTED"
+            ? "warn"
+            : status === "REJECTED"
+                ? "error"
+                : ["CANCELLED", "CHECKED_OUT"].includes(status)
+                    ? "neutral"
+                    : "success";
+    const label = status === "REQUESTED" ? "Requested" : status === "WAITLISTED" ? "Waitlisted" : formatLabel(status);
     return `<span class="status-badge ${tone}">${escapeHtml(label)}</span>`;
 }
 
@@ -1112,6 +1295,18 @@ function handleStaffShelterInput(event) {
         : event.target.value;
 }
 
+function handleStaffTurnAwayInput(event) {
+    if (!event.target.name || !state.staffTurnAwayForm) {
+        return;
+    }
+    state.staffTurnAwayErrors = {};
+    state.staffTurnAwayForm[event.target.name] = event.target.value;
+    if (event.target.name === "shelterId") {
+        state.staffSelectedShelterId = Number(event.target.value) || null;
+        render();
+    }
+}
+
 function hydrateStaffShelterForm() {
     const shelter = getSelectedStaffShelter();
     state.staffShelterErrors = {};
@@ -1146,6 +1341,15 @@ function hydrateStaffShelterForm() {
             perks: shelter.perks ?? ""
         }
         : null;
+}
+
+function hydrateStaffTurnAwayForm() {
+    state.staffTurnAwayErrors = {};
+    state.staffTurnAwayForm = {
+        ...buildEmptyTurnAwayForm(),
+        shelterId: state.staffSelectedShelterId ?? state.shelters[0]?.id ?? "",
+        recordedBy: state.staffTurnAwayForm?.recordedBy || "M. Alvarez"
+    };
 }
 
 async function submitStaffShelterUpdate() {
@@ -1192,12 +1396,46 @@ async function submitStaffShelterUpdate() {
     }
 }
 
+async function submitStaffTurnAwayLog() {
+    if (!state.staffTurnAwayForm) {
+        return;
+    }
+
+    const payload = {
+        shelterId: normalizeInteger(state.staffTurnAwayForm.shelterId, true),
+        guestId: normalizeInteger(state.staffTurnAwayForm.guestId),
+        reason: state.staffTurnAwayForm.reason,
+        notes: normalizeBlank(state.staffTurnAwayForm.notes),
+        occurredAt: normalizeBlank(state.staffTurnAwayForm.occurredAt),
+        recordedBy: state.staffTurnAwayForm.recordedBy.trim()
+    };
+
+    try {
+        await apiFetch("/api/turn-away-logs", {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+        showFlash("Turn-away log saved.", "success");
+        hydrateStaffTurnAwayForm();
+        await loadTurnAwayLogs({ silent: true });
+    } catch (error) {
+        state.staffTurnAwayErrors = extractFieldErrors(error);
+        if (!Object.keys(state.staffTurnAwayErrors).length) {
+            state.staffTurnAwayErrors = { message: error.message };
+        }
+        showFlash(error.message || "Could not save turn-away log.", "error");
+    } finally {
+        render();
+    }
+}
+
 function openDialog(action, bookingId) {
     const booking = state.bookings.find((entry) => entry.id === bookingId);
     if (!booking || !BOOKING_ACTIONS[action]) {
         return;
     }
 
+    state.staffSelectedBookingId = bookingId;
     state.dialogAction = action;
     state.dialogBookingId = bookingId;
     elements.dialogTitle.textContent = BOOKING_ACTIONS[action].label;
@@ -1222,7 +1460,7 @@ function closeDialog() {
 }
 
 async function submitStaffBookingAction() {
-    const booking = getSelectedStaffBooking();
+    const booking = state.bookings.find((entry) => entry.id === state.dialogBookingId);
     if (!booking || !state.dialogAction) {
         return;
     }
@@ -1298,9 +1536,20 @@ function buildEmptyPublicRequestForm() {
         legalName: "",
         phoneNumber: "",
         birthDate: "",
-        requestedBedDate: new Date().toISOString().slice(0, 10),
+        requestedBedDate: formatLocalDateInput(APP_NOW),
         requestedBy: "",
         intakeNotes: ""
+    };
+}
+
+function buildEmptyTurnAwayForm() {
+    return {
+        shelterId: "",
+        guestId: "",
+        reason: "NO_BEDS_AVAILABLE",
+        occurredAt: formatLocalDateTimeInput(APP_NOW),
+        recordedBy: "M. Alvarez",
+        notes: ""
     };
 }
 
@@ -1314,6 +1563,45 @@ function sumAvailableBeds() {
 
 function sumCurrentOccupancy() {
     return state.shelters.reduce((sum, shelter) => sum + (shelter.currentOccupancy ?? 0), 0);
+}
+
+function getVisibleTurnAwayLogs() {
+    if (!state.staffSelectedShelterId) {
+        return state.turnAwayLogs;
+    }
+    return state.turnAwayLogs.filter((log) => log.shelter.id === state.staffSelectedShelterId);
+}
+
+function getTurnAwayGuestOptions() {
+    const seen = new Map();
+    state.bookings.forEach((booking) => {
+        if (booking.guest?.id && !seen.has(booking.guest.id)) {
+            seen.set(booking.guest.id, {
+                id: booking.guest.id,
+                label: `${booking.guest.displayName} · ${booking.shelter.name}`
+            });
+        }
+    });
+    return Array.from(seen.values()).sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function renderTurnAwayLogCard(log) {
+    return `
+        <article class="panel turn-away-card">
+            <div class="card-top">
+                <div>
+                    <p class="eyebrow">${escapeHtml(formatLabel(log.reason))}</p>
+                    <h3>${escapeHtml(log.guest?.displayName || "Unlinked guest")}</h3>
+                    <p class="helper-text">${escapeHtml(log.shelter.name)} · ${escapeHtml(formatDateTime(log.occurredAt))}</p>
+                </div>
+                ${renderChip(formatLabel(log.reason), log.reason === "NO_BEDS_AVAILABLE" || log.reason === "INTAKE_CLOSED" ? "warn" : "neutral")}
+            </div>
+            <div class="detail-copy">
+                <p><strong>Recorded by:</strong> ${escapeHtml(log.recordedBy)}</p>
+                <p><strong>Notes:</strong> ${escapeHtml(log.notes || "No extra notes provided.")}</p>
+            </div>
+        </article>
+    `;
 }
 
 function formatLabel(value) {
@@ -1342,7 +1630,7 @@ function formatRelativeTime(value) {
     if (!value) {
         return "Just now";
     }
-    const diffMs = Date.now() - new Date(value).getTime();
+    const diffMs = APP_NOW.getTime() - new Date(value).getTime();
     const minutes = Math.max(1, Math.round(diffMs / 60000));
     if (minutes < 60) {
         return `${minutes} min ago`;
@@ -1365,9 +1653,46 @@ function formatIntakeWindow(shelter) {
     return "See shelter instructions";
 }
 
+function isShelterOpenNow(shelter) {
+    if (!["OPEN", "LIMITED"].includes(shelter.operationalStatus)) {
+        return false;
+    }
+    if (shelter.open24Hours) {
+        return true;
+    }
+    if (!shelter.intakeStartTime || !shelter.intakeCutoffTime) {
+        return false;
+    }
+
+    const now = APP_NOW;
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = timeStringToMinutes(shelter.intakeStartTime);
+    const cutoffMinutes = timeStringToMinutes(shelter.intakeCutoffTime);
+
+    if (startMinutes <= cutoffMinutes) {
+        return currentMinutes >= startMinutes && currentMinutes <= cutoffMinutes;
+    }
+    return currentMinutes >= startMinutes || currentMinutes <= cutoffMinutes;
+}
+
 function formatSimpleTime(value) {
     const [hour, minute] = value.split(":");
-    return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(new Date(`2026-07-17T${hour}:${minute}:00`));
+    return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(new Date(`2026-07-18T${hour}:${minute}:00`));
+}
+
+function timeStringToMinutes(value) {
+    const [hour, minute] = value.split(":").map(Number);
+    return (hour * 60) + minute;
+}
+
+function formatLocalDateInput(value) {
+    const offsetMs = value.getTimezoneOffset() * 60000;
+    return new Date(value.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
+function formatLocalDateTimeInput(value) {
+    const offsetMs = value.getTimezoneOffset() * 60000;
+    return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 function formatAgeRange(shelter) {

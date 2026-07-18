@@ -228,6 +228,11 @@ a {
     border-bottom: 1px solid var(--line);
 }
 
+.public-filter-stack {
+    display: grid;
+    gap: 14px;
+}
+
 .public-search-field input {
     height: 54px;
     border-radius: 14px;
@@ -236,6 +241,21 @@ a {
     box-shadow: 0 1px 3px rgba(24, 35, 44, 0.08);
     padding: 0 18px;
     font-size: 1.05rem;
+}
+
+.public-filter-select select {
+    width: 100%;
+    height: 50px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: white;
+    padding: 0 14px;
+}
+
+.public-select-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 220px));
+    gap: 10px;
 }
 
 .public-filter-row {
@@ -874,6 +894,12 @@ tbody tr:hover {
     border: 1px solid #f3cf84;
 }
 
+.status-badge.neutral {
+    background: #eef2f4;
+    color: #52606d;
+    border: 1px solid #d7e0e5;
+}
+
 .status-badge.success {
     background: #e7f6ee;
     color: var(--accent);
@@ -937,6 +963,22 @@ tbody tr:hover {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
+}
+
+.split-layout,
+.turn-away-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    gap: 22px;
+}
+
+.turn-away-history {
+    display: grid;
+    gap: 16px;
+}
+
+.turn-away-card {
+    padding: 22px;
 }
 
 .availability-card {
@@ -1084,6 +1126,8 @@ tbody tr:hover {
 @media (max-width: 1200px) {
     .public-tools,
     .request-layout,
+    .split-layout,
+    .turn-away-layout,
     .staff-kpi-grid,
     .availability-grid {
         grid-template-columns: 1fr;
@@ -1097,6 +1141,10 @@ tbody tr:hover {
     .list-facts-row,
     .detail-summary-grid,
     .staff-detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .public-select-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
@@ -1150,6 +1198,10 @@ tbody tr:hover {
     .aligned-detail,
     .request-layout {
         gap: 16px;
+    }
+
+    .public-select-grid {
+        grid-template-columns: 1fr;
     }
 
     .public-main,

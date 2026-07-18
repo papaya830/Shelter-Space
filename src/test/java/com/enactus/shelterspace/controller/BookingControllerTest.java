@@ -266,6 +266,22 @@ class BookingControllerTest {
     }
 
     @Test
+    void waitlistBookingSucceeds() throws Exception {
+        mockMvc.perform(post("/api/bookings/{id}/waitlist", requestedBooking.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "staffName": "Dana",
+                                  "notes": "Hold for later opening"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("WAITLISTED"))
+                .andExpect(jsonPath("$.decidedBy").value("Dana"))
+                .andExpect(jsonPath("$.decisionNotes").value("Hold for later opening"));
+    }
+
+    @Test
     void checkInSucceeds() throws Exception {
         mockMvc.perform(post("/api/bookings/{id}/check-in", admittedBooking.getId())
                         .contentType(MediaType.APPLICATION_JSON)

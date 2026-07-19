@@ -49,7 +49,8 @@ public class SeedDataLoader {
                     "Zero tolerance for violence; quiet hours after 10 p.m.",
                     "Call front desk before arrival to confirm same-night availability.",
                     "Pet friendly and wheelchair accessible.",
-                    "Meals, showers, pet support"
+                    "Meals, showers, pet support",
+                    49.0957, -122.6576
             ));
 
             Shelter catholicMens = shelterRepository.save(buildShelter(
@@ -61,7 +62,8 @@ public class SeedDataLoader {
                     "Sobriety expected during stay.",
                     "Call ahead for screening; government ID preferred but not required.",
                     "Frequently full by evening.",
-                    "Meals"
+                    "Meals",
+                    49.2858, -123.1289
             ));
 
             Shelter northShore = shelterRepository.save(buildShelter(
@@ -73,7 +75,8 @@ public class SeedDataLoader {
                     "Respect staff directions and shared sleeping areas.",
                     "Phone intake recommended before arrival.",
                     "Often keeps one or two spaces open for urgent placements.",
-                    "Showers"
+                    "Showers",
+                    49.3195, -123.0724
             ));
 
             Shelter stevensonHouse = shelterRepository.save(buildShelter(
@@ -85,7 +88,8 @@ public class SeedDataLoader {
                     "Guests must return before curfew.",
                     "No intakes after 10 p.m.",
                     "Matches the live note from the source list.",
-                    "Laundry"
+                    "Laundry",
+                    49.2058, -122.9120
             ));
 
             Shelter rockBay = shelterRepository.save(buildShelter(
@@ -97,7 +101,8 @@ public class SeedDataLoader {
                     "First-come-first-served intake each evening.",
                     "Walk up during intake hours; staff assess space at the door.",
                     "Pet friendly and takes large items.",
-                    "Storage, pet support, meals"
+                    "Storage, pet support, meals",
+                    48.4284, -123.3656
             ));
 
             Shelter springhouse = shelterRepository.save(buildShelter(
@@ -109,7 +114,8 @@ public class SeedDataLoader {
                     "Women and family-focused communal living guidelines apply.",
                     "Confidential address; call first for screening and directions.",
                     "One stream reserved for pregnant women.",
-                    "Family rooms, meals"
+                    "Family rooms, meals",
+                    49.2827, -123.1207
             ));
 
             Shelter centreHope = shelterRepository.save(buildShelter(
@@ -121,7 +127,8 @@ public class SeedDataLoader {
                     "Guests must participate in basic intake on arrival.",
                     "Phone ahead for bed confirmation when possible.",
                     "Several open beds in seed data.",
-                    "Meals, storage"
+                    "Meals, storage",
+                    49.0490, -122.3081
             ));
 
             Shelter rosewood = shelterRepository.save(buildShelter(
@@ -133,7 +140,8 @@ public class SeedDataLoader {
                     "Referral-based placement for women with children.",
                     "Address shared after screening or referral acceptance.",
                     "Confidential location.",
-                    "Family rooms"
+                    "Family rooms",
+                    49.1913, -122.8490
             ));
 
             Shelter theHaven = shelterRepository.save(buildShelter(
@@ -145,7 +153,8 @@ public class SeedDataLoader {
                     "Behaviour-based access decisions may be made at the door.",
                     "No holds over phone. Guests are assessed at the door.",
                     "Matches shelter-list note.",
-                    "Meals"
+                    "Meals",
+                    49.2827, -123.0970
             ));
 
             Shelter beacon = shelterRepository.save(buildShelter(
@@ -157,7 +166,8 @@ public class SeedDataLoader {
                     "Curfew at 10:30 p.m.",
                     "24-hour site; intake 8:00 a.m. to 11:30 p.m.",
                     "Matches shelter-list note.",
-                    "Meals"
+                    "Meals",
+                    49.2827, -123.0970
             ));
 
             Shelter youthSafeHouse = shelterRepository.save(buildShelter(
@@ -169,7 +179,8 @@ public class SeedDataLoader {
                     "Youth-focused programming and staff supervision.",
                     "Call for confidential intake and directions.",
                     "Any gender youth beds.",
-                    "Youth support"
+                    "Youth support",
+                    49.3195, -123.0724
             ));
 
             Shelter havenInHollow = shelterRepository.save(buildShelter(
@@ -181,7 +192,8 @@ public class SeedDataLoader {
                     "Temporarily closed.",
                     "No current intake.",
                     "Seeded as closed based on the source list.",
-                    "None"
+                    "None",
+                    49.1523, -122.2979
             ));
 
             GuestProfile alex = guestProfileRepository.save(buildGuest("Alex", null, LocalDate.of(1993, 4, 12), "604-555-0101", "Prefers alias only."));
@@ -251,7 +263,9 @@ public class SeedDataLoader {
             String rules,
             String intakeInstructions,
             String notes,
-            String perks
+            String perks,
+            Double latitude,
+            Double longitude
     ) {
         Shelter shelter = new Shelter();
         shelter.setName(name);
@@ -281,6 +295,8 @@ public class SeedDataLoader {
         shelter.setNotes(notes);
         shelter.setPerks(perks);
         shelter.setLegalNameRequired(false);
+        shelter.setLatitude(latitude);
+        shelter.setLongitude(longitude);
         return shelter;
     }
 

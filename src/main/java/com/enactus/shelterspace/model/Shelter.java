@@ -125,6 +125,12 @@ public class Shelter {
     @Column(length = 1000)
     private String perks;
 
+    @Column
+    private Double latitude;
+
+    @Column
+    private Double longitude;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

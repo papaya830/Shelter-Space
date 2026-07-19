@@ -118,7 +118,12 @@ const state = {
     chatInput: "",
     chatSending: false,
     chatMessages: [],
-    chatNextInputs: ["BED", "HELP"]
+    chatNextInputs: ["BED", "HELP"],
+    userLat: null,
+    userLng: null,
+    nearbyMode: false,
+    locationLoading: false,
+    locationError: null
 };
 
 const elements = {
@@ -229,6 +234,24 @@ async function loadShelters({ silent }) {
     }
 }
 
+async function loadNearbyShelters({ silent }) {
+    state.loadingShelters = true;
+    if (!silent) {
+        showFlash("Finding shelters near you.", "success", 1400);
+    }
+    render();
+
+    try {
+        state.shelters = await apiFetch(`/api/shelters/nearby?lat=${state.userLat}&lng=${state.userLng}&radius=100`);
+        updateConnection("success", "Nearby shelters loaded");
+    } catch (error) {
+        updateConnection("error", "Nearby search failed");
+        showFlash(error.message || "Could not find nearby shelters.", "error");
+    } finally {
+        state.loadingShelters = false;
+    }
+}
+
 async function loadBookings({ silent }) {
     state.loadingBookings = true;
     updateConnection("neutral", "Loading bookings");
@@ -299,9 +322,55 @@ function bindViewEvents() {
                     tasks.push(loadTurnAwayLogs({ silent: false }));
                 }
                 await Promise.all(tasks);
+            } else if (state.nearbyMode) {
+                await loadNearbyShelters({ silent: false });
             } else {
                 await loadShelters({ silent: false });
             }
+            render();
+        });
+    }
+
+    const useLocationButton = document.querySelector("[data-action='use-location']");
+    if (useLocationButton) {
+        useLocationButton.addEventListener("click", () => {
+            if (!navigator.geolocation) {
+                state.locationError = "Your browser does not support location sharing.";
+                render();
+                return;
+            }
+            state.locationLoading = true;
+            state.locationError = null;
+            render();
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    state.userLat = position.coords.latitude;
+                    state.userLng = position.coords.longitude;
+                    state.nearbyMode = true;
+                    state.locationLoading = false;
+                    await loadNearbyShelters({ silent: false });
+                    render();
+                },
+                (err) => {
+                    state.locationLoading = false;
+                    state.locationError = err.code === 1
+                        ? "Location access was denied. Please allow location in your browser settings."
+                        : "Could not determine your location. Please try again.";
+                    render();
+                },
+                { timeout: 10000 }
+            );
+        });
+    }
+
+    const clearLocationButton = document.querySelector("[data-action='clear-location']");
+    if (clearLocationButton) {
+        clearLocationButton.addEventListener("click", async () => {
+            state.nearbyMode = false;
+            state.userLat = null;
+            state.userLng = null;
+            state.locationError = null;
+            await loadShelters({ silent: true });
             render();
         });
     }
@@ -567,9 +636,20 @@ function renderPublicShelterList() {
                     <span class="sr-only">Search by shelter name or neighborhood</span>
                     <input id="public-search" value="${escapeHtml(state.publicSearch)}" placeholder="Search by name or neighborhood">
                 </label>
-                <div class="public-select-grid">
-                    ${renderFilterSelect("publicBarrierLevel", "Any barrier level", state.publicBarrierLevel, ENUM_OPTIONS.barrierLevel)}
-                    ${renderFilterSelect("publicPopulationType", "Any guest type", state.publicPopulationType, ENUM_OPTIONS.populationType)}
+                <div class="public-controls-row">
+                    <div class="public-select-grid">
+                        ${renderFilterSelect("publicBarrierLevel", "Any barrier level", state.publicBarrierLevel, ENUM_OPTIONS.barrierLevel)}
+                        ${renderFilterSelect("publicPopulationType", "Any guest type", state.publicPopulationType, ENUM_OPTIONS.populationType)}
+                    </div>
+                    <div class="public-location-actions">
+                        ${state.nearbyMode
+                            ? `<span class="location-active-label">Showing shelters near you</span>
+                               <button class="button ghost inline" data-action="clear-location">Clear location</button>`
+                            : `<button class="button secondary inline" data-action="use-location" ${state.locationLoading ? "disabled" : ""}>
+                                   ${state.locationLoading ? "Locating…" : "Use my location"}
+                               </button>`}
+                        <button class="button secondary inline public-refresh" data-action="refresh">Refresh</button>
+                    </div>
                 </div>
                 <div class="toggle-row public-filter-row">
                     ${renderPublicFilterChip("allFake", "All", !state.publicAvailableOnly && !state.publicOpenNowOnly && !state.publicCallAheadOnly && !state.publicWheelchairOnly && !state.publicPetsOnly && !state.publicBarrierLevel && !state.publicPopulationType)}
@@ -580,8 +660,9 @@ function renderPublicShelterList() {
                     ${renderPublicFilterChip("publicPetsOnly", "Pets allowed", state.publicPetsOnly)}
                 </div>
             </div>
-            <button class="button secondary public-refresh" data-action="refresh">Refresh</button>
         </section>
+
+        ${state.locationError ? `<p class="helper-text error-text location-error">${escapeHtml(state.locationError)}</p>` : ""}
 
         <section class="public-card-grid">
             ${shelters.length === 0
@@ -598,7 +679,7 @@ function renderPublicShelterCard(shelter) {
             <div class="card-top shelter-list-top">
                 <div class="shelter-title-block">
                     <h3>${escapeHtml(shelter.name)}</h3>
-                    <p class="location-line">⌖ ${escapeHtml(shelter.city)}</p>
+                    <p class="location-line">⌖ ${escapeHtml(shelter.city)}${shelter.distanceKm != null ? ` · ${shelter.distanceKm < 1 ? (shelter.distanceKm * 1000).toFixed(0) + " m" : shelter.distanceKm.toFixed(1) + " km"} away` : ""}</p>
                 </div>
                 ${renderAvailabilityPill(shelter, availability)}
             </div>

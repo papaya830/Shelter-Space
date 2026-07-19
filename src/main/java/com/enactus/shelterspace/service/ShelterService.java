@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -49,6 +50,30 @@ public class ShelterService {
         shelterRepository.delete(shelter);
     }
 
+    public List<ShelterResponse> getNearby(double userLat, double userLng, double radiusKm) {
+        return shelterRepository.findAll()
+                .stream()
+                .filter(s -> s.getLatitude() != null && s.getLongitude() != null)
+                .map(s -> {
+                    double dist = haversineKm(userLat, userLng, s.getLatitude(), s.getLongitude());
+                    return new Object[]{ s, dist };
+                })
+                .filter(pair -> (double) pair[1] <= radiusKm)
+                .sorted(Comparator.comparingDouble(pair -> (double) ((Object[]) pair)[1]))
+                .map(pair -> ShelterResponse.fromEntityWithDistance((Shelter) pair[0], (double) pair[1]))
+                .toList();
+    }
+
+    private double haversineKm(double lat1, double lng1, double lat2, double lng2) {
+        final double R = 6371.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
     private Shelter getShelterEntity(Long id) {
         return shelterRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Shelter not found: " + id));
@@ -82,6 +107,8 @@ public class ShelterService {
         shelter.setIntakeInstructions(trimToNull(request.getIntakeInstructions()));
         shelter.setNotes(trimToNull(request.getNotes()));
         shelter.setPerks(trimToNull(request.getPerks()));
+        shelter.setLatitude(request.getLatitude());
+        shelter.setLongitude(request.getLongitude());
     }
 
     private String trimToNull(String value) {

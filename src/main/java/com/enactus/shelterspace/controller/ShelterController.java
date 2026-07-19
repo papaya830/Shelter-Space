@@ -5,6 +5,7 @@ import com.enactus.shelterspace.dto.ShelterResponse;
 import com.enactus.shelterspace.service.ShelterService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/shelters")
@@ -27,22 +29,33 @@ public class ShelterController {
 
     private final ShelterService shelterService;
 
+    private static final CacheControl SHELTER_CACHE = CacheControl
+            .maxAge(60, TimeUnit.SECONDS)
+            .staleWhileRevalidate(300, TimeUnit.SECONDS)
+            .cachePublic();
+
     @GetMapping
-    public List<ShelterResponse> getAll() {
-        return shelterService.getAll();
+    public ResponseEntity<List<ShelterResponse>> getAll() {
+        return ResponseEntity.ok()
+                .cacheControl(SHELTER_CACHE)
+                .body(shelterService.getAll());
     }
 
     @GetMapping("/nearby")
-    public List<ShelterResponse> getNearby(
+    public ResponseEntity<List<ShelterResponse>> getNearby(
             @RequestParam double lat,
             @RequestParam double lng,
             @RequestParam(defaultValue = "50") double radius) {
-        return shelterService.getNearby(lat, lng, radius);
+        return ResponseEntity.ok()
+                .cacheControl(SHELTER_CACHE)
+                .body(shelterService.getNearby(lat, lng, radius));
     }
 
     @GetMapping("/{id}")
-    public ShelterResponse getById(@PathVariable Long id) {
-        return shelterService.getById(id);
+    public ResponseEntity<ShelterResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .cacheControl(SHELTER_CACHE)
+                .body(shelterService.getById(id));
     }
 
     @PostMapping

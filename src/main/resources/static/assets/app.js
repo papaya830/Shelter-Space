@@ -89,7 +89,13 @@ const state = {
     flash: null,
     connection: { tone: "neutral", label: "Ready" },
     dialogAction: null,
-    dialogBookingId: null
+    dialogBookingId: null,
+    chatClientSessionId: null,
+    chatAlias: "",
+    chatInput: "",
+    chatSending: false,
+    chatMessages: [],
+    chatNextInputs: ["BED", "HELP"]
 };
 
 const elements = {
@@ -106,6 +112,7 @@ const elements = {
 };
 
 async function init() {
+    bootstrapChatState();
     bindGlobalEvents();
     await ensureDataForRoute({ silent: false });
     render();
@@ -331,6 +338,35 @@ function bindViewEvents() {
         });
     }
 
+    const chatAliasInput = document.querySelector("#chat-alias");
+    if (chatAliasInput) {
+        chatAliasInput.addEventListener("input", (event) => {
+            state.chatAlias = event.target.value;
+            persistChatAlias();
+        });
+    }
+
+    const chatForm = document.querySelector("#keyword-chat-form");
+    if (chatForm) {
+        chatForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await submitChatMessage(state.chatInput);
+        });
+    }
+
+    const chatInput = document.querySelector("#chat-message");
+    if (chatInput) {
+        chatInput.addEventListener("input", (event) => {
+            state.chatInput = event.target.value;
+        });
+    }
+
+    document.querySelectorAll("[data-chat-reply]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            await submitChatMessage(button.dataset.chatReply || "");
+        });
+    });
+
     const shelterSearch = document.querySelector("#staff-shelter-search");
     if (shelterSearch) {
         shelterSearch.addEventListener("input", (event) => {
@@ -398,6 +434,7 @@ function renderPublicApp() {
             <main class="public-main">
                 ${renderFlash()}
                 ${renderPublicContent()}
+                ${renderPublicChatWidget()}
             </main>
         </div>
     `;
@@ -415,6 +452,48 @@ function renderPublicContent() {
         return renderPublicRequestView();
     }
     return renderPublicShelterList();
+}
+
+function renderPublicChatWidget() {
+    const transcript = state.chatMessages.length
+        ? state.chatMessages.map((entry) => `
+            <div class="chat-line ${entry.role}">
+                <span class="chat-role">${entry.role === "user" ? "You" : "Bot"}</span>
+                <p>${escapeHtml(entry.text)}</p>
+            </div>
+        `).join("")
+        : `<div class="chat-line bot"><span class="chat-role">Bot</span><p>Send HELP to see commands.</p></div>`;
+
+    return `
+        <section class="panel public-chat-panel">
+            <div class="chat-header">
+                <div>
+                    <p class="eyebrow">Keyword chatbot demo</p>
+                    <h3>Text-style bed request flow</h3>
+                </div>
+                <span class="helper-text">No login required</span>
+            </div>
+            <label class="field chat-alias-field">
+                <span>Name staff can call you</span>
+                <input id="chat-alias" maxlength="120" value="${escapeHtml(state.chatAlias)}" placeholder="e.g. Sam">
+            </label>
+            <div class="chat-transcript" aria-live="polite">
+                ${transcript}
+            </div>
+            <form id="keyword-chat-form" class="chat-form">
+                <input id="chat-message" maxlength="280" value="${escapeHtml(state.chatInput)}" placeholder="Type BED, STATUS, HELP..." ${state.chatSending ? "disabled" : ""}>
+                <button class="button" type="submit" ${state.chatSending ? "disabled" : ""}>Send</button>
+            </form>
+            <div class="chat-quick-replies">
+                ${(state.chatNextInputs || ["BED", "HELP"]).slice(0, 4).map((reply) => `
+                    <button class="filter-chip" type="button" data-chat-reply="${escapeHtml(reply)}" ${state.chatSending ? "disabled" : ""}>
+                        ${escapeHtml(reply)}
+                    </button>
+                `).join("")}
+            </div>
+            <p class="helper-text">Commands are case-insensitive. Use BED, STATUS, CANCEL, DIR, HELP, number choices, and YES/NO.</p>
+        </section>
+    `;
 }
 
 function renderPublicShelterList() {
@@ -1527,6 +1606,67 @@ function showFlash(message, tone, timeout = 3200) {
         state.flash = null;
         render();
     }, timeout);
+}
+
+function bootstrapChatState() {
+    const storedSessionId = window.localStorage.getItem("chatClientSessionId");
+    const storedAlias = window.localStorage.getItem("chatAlias") || "";
+    state.chatClientSessionId = storedSessionId || `chat-${crypto.randomUUID()}`;
+    state.chatAlias = storedAlias;
+    state.chatMessages = [{
+        role: "bot",
+        text: "Welcome. Send HELP for commands."
+    }];
+    if (!storedSessionId) {
+        window.localStorage.setItem("chatClientSessionId", state.chatClientSessionId);
+    }
+}
+
+function persistChatAlias() {
+    const alias = state.chatAlias.trim();
+    if (alias) {
+        window.localStorage.setItem("chatAlias", alias);
+    }
+}
+
+async function submitChatMessage(rawMessage) {
+    const message = String(rawMessage || "").trim();
+    if (!message || state.chatSending) {
+        return;
+    }
+
+    state.chatSending = true;
+    state.chatInput = "";
+    state.chatMessages.push({ role: "user", text: message });
+    render();
+
+    try {
+        const response = await apiFetch("/api/chatbot/messages", {
+            method: "POST",
+            body: JSON.stringify({
+                clientSessionId: state.chatClientSessionId,
+                message,
+                alias: normalizeBlank(state.chatAlias)
+            })
+        });
+        if (Array.isArray(response.messages)) {
+            response.messages.forEach((entry) => {
+                state.chatMessages.push({ role: "bot", text: entry });
+            });
+        }
+        state.chatNextInputs = Array.isArray(response.nextInputs) && response.nextInputs.length
+            ? response.nextInputs
+            : ["BED", "HELP"];
+    } catch (error) {
+        state.chatMessages.push({
+            role: "bot",
+            text: error.message || "Chat request failed. Try HELP."
+        });
+        state.chatNextInputs = ["HELP", "BED"];
+    } finally {
+        state.chatSending = false;
+        render();
+    }
 }
 
 function buildEmptyPublicRequestForm() {

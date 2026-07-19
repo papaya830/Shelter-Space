@@ -595,6 +595,91 @@ a {
     margin: 0 auto;
 }
 
+.public-chat-panel {
+    margin-top: 24px;
+    padding: 24px;
+}
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.chat-alias-field {
+    margin-bottom: 12px;
+}
+
+.chat-transcript {
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    background: #faf9f5;
+    max-height: 300px;
+    overflow: auto;
+}
+
+.chat-line {
+    display: grid;
+    gap: 4px;
+    max-width: 90%;
+}
+
+.chat-line p {
+    margin: 0;
+    padding: 9px 12px;
+    border-radius: 12px;
+}
+
+.chat-line.user {
+    margin-left: auto;
+}
+
+.chat-line.user p {
+    background: var(--accent);
+    color: white;
+}
+
+.chat-line.bot p {
+    background: white;
+    border: 1px solid var(--line);
+    color: var(--text);
+}
+
+.chat-role {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.chat-form {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+}
+
+.chat-form input {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    padding: 12px 14px;
+    background: white;
+}
+
+.chat-quick-replies {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .field,
 .toggle {
     display: grid;

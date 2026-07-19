@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ShelterBookingRepository extends JpaRepository<ShelterBooking, Long> {
@@ -17,4 +18,11 @@ public interface ShelterBookingRepository extends JpaRepository<ShelterBooking, 
     long countByShelterIdAndStatusIn(Long shelterId, Collection<BookingStatus> statuses);
 
     List<ShelterBooking> findByShelterIdAndRequestedBedDate(Long shelterId, LocalDate requestedBedDate);
+
+    Optional<ShelterBooking> findTopByGuestIdOrderByRequestedAtDescIdDesc(Long guestId);
+
+    Optional<ShelterBooking> findTopByGuestIdAndStatusInOrderByRequestedAtDescIdDesc(
+            Long guestId,
+            Collection<BookingStatus> statuses
+    );
 }

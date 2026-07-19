@@ -14,6 +14,28 @@ const STATUS_TONES = {
     AVAILABLE: "success"
 };
 
+const CHAT_REPLY_LABELS = {
+    BED: "Find a bed",
+    STATUS: "Check my request",
+    HELP: "See options",
+    CANCEL: "Cancel request",
+    DIR: "Get directions",
+    YES: "Yes",
+    NO: "No",
+    MORE: "Show more shelters"
+};
+
+const CHAT_REPLY_HINTS = {
+    BED: "Start a new bed request.",
+    STATUS: "Check your latest request status.",
+    HELP: "See what this chat can do.",
+    CANCEL: "Cancel a pending request.",
+    DIR: "Get shelter address and phone details.",
+    YES: "Confirm and send this step.",
+    NO: "Decline or go back for this step.",
+    MORE: "See the next list of shelter options."
+};
+
 const APP_NOW = new Date("2026-07-18T12:00:00-07:00");
 
 const STAFF_FILTERS = [
@@ -89,7 +111,14 @@ const state = {
     flash: null,
     connection: { tone: "neutral", label: "Ready" },
     dialogAction: null,
-    dialogBookingId: null
+    dialogBookingId: null,
+    chatClientSessionId: null,
+    chatOpen: false,
+    chatAlias: "",
+    chatInput: "",
+    chatSending: false,
+    chatMessages: [],
+    chatNextInputs: ["BED", "HELP"]
 };
 
 const elements = {
@@ -106,6 +135,7 @@ const elements = {
 };
 
 async function init() {
+    bootstrapChatState();
     bindGlobalEvents();
     await ensureDataForRoute({ silent: false });
     render();
@@ -246,6 +276,17 @@ async function loadTurnAwayLogs({ silent }) {
 function render() {
     elements.root.innerHTML = state.route.mode === "staff" ? renderStaffApp() : renderPublicApp();
     bindViewEvents();
+    queueChatAutoScroll();
+}
+
+function queueChatAutoScroll() {
+    window.requestAnimationFrame(() => {
+        const transcript = document.querySelector(".chat-transcript");
+        if (!transcript) {
+            return;
+        }
+        transcript.scrollTop = transcript.scrollHeight;
+    });
 }
 
 function bindViewEvents() {
@@ -331,6 +372,51 @@ function bindViewEvents() {
         });
     }
 
+    const chatAliasInput = document.querySelector("#chat-alias");
+    if (chatAliasInput) {
+        chatAliasInput.addEventListener("input", (event) => {
+            state.chatAlias = event.target.value;
+            persistChatAlias();
+        });
+    }
+
+    const chatForm = document.querySelector("#keyword-chat-form");
+    if (chatForm) {
+        chatForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await submitChatMessage(state.chatInput);
+        });
+    }
+
+    const chatInput = document.querySelector("#chat-message");
+    if (chatInput) {
+        chatInput.addEventListener("input", (event) => {
+            state.chatInput = event.target.value;
+        });
+    }
+
+    document.querySelectorAll("[data-chat-reply]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            await submitChatMessage(button.dataset.chatReply || "");
+        });
+    });
+
+    const chatToggleButton = document.querySelector("[data-chat-toggle]");
+    if (chatToggleButton) {
+        chatToggleButton.addEventListener("click", () => {
+            state.chatOpen = !state.chatOpen;
+            render();
+        });
+    }
+
+    const chatCloseButton = document.querySelector("[data-chat-close]");
+    if (chatCloseButton) {
+        chatCloseButton.addEventListener("click", () => {
+            state.chatOpen = false;
+            render();
+        });
+    }
+
     const shelterSearch = document.querySelector("#staff-shelter-search");
     if (shelterSearch) {
         shelterSearch.addEventListener("input", (event) => {
@@ -398,6 +484,7 @@ function renderPublicApp() {
             <main class="public-main">
                 ${renderFlash()}
                 ${renderPublicContent()}
+                ${renderPublicChatWidget()}
             </main>
         </div>
     `;
@@ -415,6 +502,59 @@ function renderPublicContent() {
         return renderPublicRequestView();
     }
     return renderPublicShelterList();
+}
+
+function renderPublicChatWidget() {
+    const transcript = state.chatMessages.length
+        ? state.chatMessages.map((entry) => `
+            <div class="chat-line ${entry.role}">
+                <span class="chat-role">${entry.role === "user" ? "You" : "Bot"}</span>
+                <p>${escapeHtml(entry.text)}</p>
+            </div>
+        `).join("")
+        : `<div class="chat-line bot"><span class="chat-role">Bot</span><p>I can help you find a bed or check your request.</p></div>`;
+
+    return `
+        <div class="chat-fab-shell">
+            <button
+                type="button"
+                class="chat-fab"
+                data-chat-toggle="true"
+                aria-expanded="${state.chatOpen ? "true" : "false"}"
+                aria-controls="public-chat-panel"
+            >
+                ${state.chatOpen ? "Close help" : "Get bed help"}
+            </button>
+            <section id="public-chat-panel" class="panel public-chat-panel ${state.chatOpen ? "open" : ""}">
+                <div class="chat-header">
+                    <div>
+                        <p class="eyebrow chat-eyebrow">Shelter assistant</p>
+                        <h3>Bed request chat</h3>
+                    </div>
+                    <button type="button" class="button ghost inline" data-chat-close="true">Close</button>
+                </div>
+                <label class="field chat-alias-field">
+                    <span>Name to use (optional)</span>
+                    <input id="chat-alias" maxlength="120" value="${escapeHtml(state.chatAlias)}" placeholder="e.g. Sam">
+                </label>
+                <div class="chat-transcript" aria-live="polite">
+                    ${transcript}
+                </div>
+                <form id="keyword-chat-form" class="chat-form">
+                    <input id="chat-message" maxlength="280" value="${escapeHtml(state.chatInput)}" placeholder="Type a message or tap an option..." ${state.chatSending ? "disabled" : ""}>
+                    <button class="button" type="submit" ${state.chatSending ? "disabled" : ""}>Send</button>
+                </form>
+                <div class="chat-quick-replies">
+                    ${(state.chatNextInputs || ["BED", "HELP"]).slice(0, 4).map((reply) => `
+                        <button class="filter-chip" type="button" data-chat-reply="${escapeHtml(reply)}" title="${escapeHtml(chatReplyHint(reply))}" aria-label="${escapeHtml(chatReplyHint(reply))}" ${state.chatSending ? "disabled" : ""}>
+                            ${escapeHtml(chatReplyLabel(reply))}
+                        </button>
+                    `).join("")}
+                </div>
+                <p class="helper-text">Tap an option below or type your message. Commands still work if you prefer them.</p>
+            </section>
+        </div>
+    `;
 }
 
 function renderPublicShelterList() {
@@ -1527,6 +1667,95 @@ function showFlash(message, tone, timeout = 3200) {
         state.flash = null;
         render();
     }, timeout);
+}
+
+function bootstrapChatState() {
+    const storedSessionId = window.localStorage.getItem("chatClientSessionId");
+    const storedAlias = window.localStorage.getItem("chatAlias") || "";
+    state.chatClientSessionId = storedSessionId || `chat-${crypto.randomUUID()}`;
+    state.chatAlias = storedAlias;
+    state.chatMessages = [{
+        role: "bot",
+        text: "I can help you find a bed or check your request."
+    }];
+    if (!storedSessionId) {
+        window.localStorage.setItem("chatClientSessionId", state.chatClientSessionId);
+    }
+}
+
+function persistChatAlias() {
+    const alias = state.chatAlias.trim();
+    if (alias) {
+        window.localStorage.setItem("chatAlias", alias);
+    }
+}
+
+function chatReplyLabel(value) {
+    const token = String(value || "").toUpperCase();
+    if (/^\d+$/.test(token)) {
+        return `Choose #${token}`;
+    }
+    const rangeMatch = token.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+        return `Choose ${rangeMatch[1]}-${rangeMatch[2]}`;
+    }
+    return CHAT_REPLY_LABELS[token] || value;
+}
+
+function chatReplyHint(value) {
+    const token = String(value || "").toUpperCase();
+    if (/^\d+$/.test(token)) {
+        return `Choose shelter option ${token}.`;
+    }
+    const rangeMatch = token.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+        return `Choose a shelter from option ${rangeMatch[1]} to ${rangeMatch[2]}.`;
+    }
+    return CHAT_REPLY_HINTS[token] || `Send ${token}`;
+}
+
+async function submitChatMessage(rawMessage) {
+    const message = String(rawMessage || "").trim();
+    if (!message || state.chatSending) {
+        return;
+    }
+
+    state.chatSending = true;
+    state.chatInput = "";
+    state.chatMessages.push({ role: "user", text: message });
+    render();
+
+    try {
+        const response = await apiFetch("/api/chatbot/messages", {
+            method: "POST",
+            body: JSON.stringify({
+                clientSessionId: state.chatClientSessionId,
+                message,
+                alias: normalizeBlank(state.chatAlias)
+            })
+        });
+        if (Array.isArray(response.messages)) {
+            const mergedResponse = response.messages
+                .map((entry) => String(entry || "").trim())
+                .filter(Boolean)
+                .join(" ");
+            if (mergedResponse) {
+                state.chatMessages.push({ role: "bot", text: mergedResponse });
+            }
+        }
+        state.chatNextInputs = Array.isArray(response.nextInputs) && response.nextInputs.length
+            ? response.nextInputs
+            : ["BED", "HELP"];
+    } catch (error) {
+        state.chatMessages.push({
+            role: "bot",
+            text: error.message || "Chat request failed. Please try again or tap See options."
+        });
+        state.chatNextInputs = ["HELP", "BED"];
+    } finally {
+        state.chatSending = false;
+        render();
+    }
 }
 
 function buildEmptyPublicRequestForm() {

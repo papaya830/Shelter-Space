@@ -86,6 +86,7 @@ class BookingControllerTest {
     @Test
     void createBookingReturns201AndBookingSummary() throws Exception {
         GuestProfile thirdGuest = guestProfileRepository.save(buildGuest("Jules", "604-555-1002"));
+        String requestedBedDate = LocalDate.now().plusDays(1).toString();
 
         mockMvc.perform(post("/api/bookings")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -93,12 +94,12 @@ class BookingControllerTest {
                                 {
                                   "shelterId": %d,
                                   "guestId": %d,
-                                  "requestedBedDate": "2026-07-18",
+                                  "requestedBedDate": "%s",
                                   "requestChannel": "PHONE",
                                   "requestedBy": "Front Desk",
                                   "intakeNotes": "Needs lower bunk if available"
                                 }
-                                """.formatted(availableShelter.getId(), thirdGuest.getId())))
+                                """.formatted(availableShelter.getId(), thirdGuest.getId(), requestedBedDate)))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", containsString("/api/bookings/")))
                 .andExpect(jsonPath("$.id").isNumber())
@@ -126,6 +127,8 @@ class BookingControllerTest {
 
     @Test
     void createPublicBookingReturns201AndCreatesGuestSummary() throws Exception {
+        String requestedBedDate = LocalDate.now().plusDays(1).toString();
+
         mockMvc.perform(post("/api/bookings/public")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -135,10 +138,10 @@ class BookingControllerTest {
                                   "legalName": "Casey Rivera",
                                   "phoneNumber": "604-555-3000",
                                   "birthDate": "1992-06-04",
-                                  "requestedBedDate": "2026-07-18",
+                                  "requestedBedDate": "%s",
                                   "intakeNotes": "Will arrive with a backpack"
                                 }
-                                """.formatted(availableShelter.getId())))
+                                """.formatted(availableShelter.getId(), requestedBedDate)))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", containsString("/api/bookings/")))
                 .andExpect(jsonPath("$.status").value("REQUESTED"))
@@ -236,16 +239,18 @@ class BookingControllerTest {
 
     @Test
     void duplicateActiveBookingReturns409() throws Exception {
+        String requestedBedDate = LocalDate.now().plusDays(1).toString();
+
         mockMvc.perform(post("/api/bookings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "shelterId": %d,
                                   "guestId": %d,
-                                  "requestedBedDate": "2026-07-18",
+                                  "requestedBedDate": "%s",
                                   "requestChannel": "PHONE"
                                 }
-                                """.formatted(fullShelter.getId(), firstGuest.getId())))
+                                """.formatted(fullShelter.getId(), firstGuest.getId(), requestedBedDate)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Guest already has an active booking lifecycle"));
     }

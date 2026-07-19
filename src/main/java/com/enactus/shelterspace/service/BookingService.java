@@ -9,6 +9,7 @@ import com.enactus.shelterspace.exception.ResourceNotFoundException;
 import com.enactus.shelterspace.model.GuestProfile;
 import com.enactus.shelterspace.model.Shelter;
 import com.enactus.shelterspace.model.ShelterBooking;
+import com.enactus.shelterspace.model.enums.BookingChannel;
 import com.enactus.shelterspace.model.enums.BookingStatus;
 import com.enactus.shelterspace.model.enums.ShelterStatus;
 import com.enactus.shelterspace.repository.GuestProfileRepository;
@@ -19,9 +20,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -79,9 +82,31 @@ public class BookingService {
                 shelter,
                 guest,
                 request.getRequestedBedDate(),
-                com.enactus.shelterspace.model.enums.BookingChannel.APP,
+                BookingChannel.APP,
                 request.getRequestedBy() != null && !request.getRequestedBy().isBlank() ? request.getRequestedBy() : "Public Web",
                 request.getIntakeNotes()
+        );
+    }
+
+    @Transactional
+    public BookingResponse createChatbotRequest(
+            Long shelterId,
+            Long guestId,
+            LocalDate requestedBedDate,
+            String requestedBy,
+            String intakeNotes
+    ) {
+        Shelter shelter = getShelterEntity(shelterId);
+        GuestProfile guest = guestProfileRepository.findById(guestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Guest not found: " + guestId));
+        validateBookingPreconditions(shelter, guest);
+        return createBooking(
+                shelter,
+                guest,
+                requestedBedDate,
+                BookingChannel.SMS,
+                requestedBy == null || requestedBy.isBlank() ? "Chatbot" : requestedBy,
+                intakeNotes
         );
     }
 
@@ -179,6 +204,12 @@ public class BookingService {
         booking.setDecidedBy(trimToNull(request.getStaffName()));
         booking.setDecisionNotes(trimToNull(request.getNotes()));
         return BookingResponse.fromEntity(shelterBookingRepository.save(booking));
+    }
+
+    @Transactional
+    public Optional<BookingResponse> findLatestBookingForGuest(Long guestId) {
+        return shelterBookingRepository.findTopByGuestIdOrderByRequestedAtDescIdDesc(guestId)
+                .map(BookingResponse::fromEntity);
     }
 
     private ShelterBooking getBookingEntity(Long id) {

@@ -223,8 +223,8 @@ a {
     display: grid;
     grid-template-columns: minmax(320px, 390px) 1fr auto;
     align-items: center;
-    gap: 14px;
-    padding: 18px 0 16px;
+    gap: 16px;
+    padding: 24px 28px;
     border-bottom: 1px solid var(--line);
 }
 
@@ -310,8 +310,8 @@ a {
 
 .public-card-grid {
     display: grid;
-    gap: 22px;
-    padding-top: 28px;
+    gap: 20px;
+    padding-top: 24px;
 }
 
 .shelter-card,
@@ -630,9 +630,9 @@ a {
     max-height: calc(100vh - 140px);
     overflow: hidden;
     z-index: 1200;
-    padding: 24px;
+    padding: 20px;
     border-color: #b9d4dd;
-    background: linear-gradient(180deg, #f7fbfc 0%, #ffffff 34%, #ffffff 100%);
+    background: #ffffff;
     box-shadow: 0 12px 36px rgba(15, 45, 58, 0.2);
     opacity: 0;
     transform: translateY(12px) scale(0.98);
@@ -651,8 +651,8 @@ a {
     justify-content: space-between;
     align-items: flex-start;
     gap: 12px;
-    margin-bottom: 14px;
-    padding: 10px 12px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
     border-radius: 12px;
     background: linear-gradient(90deg, #e6f5f9 0%, #f1fbff 100%);
     border: 1px solid #cbe5ee;
@@ -663,17 +663,17 @@ a {
 }
 
 .chat-alias-field {
-    margin-bottom: 12px;
+    margin-bottom: 16px;
 }
 
 .chat-transcript {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 14px;
+    padding: 16px;
     background: #faf9f5;
-    max-height: 300px;
+    max-height: 280px;
     overflow: auto;
 }
 
@@ -685,9 +685,10 @@ a {
 
 .chat-line p {
     margin: 0;
-    padding: 9px 12px;
+    padding: 10px 14px;
     border-radius: 12px;
     white-space: pre-line;
+    line-height: 1.5;
 }
 
 .chat-line.user {
@@ -714,7 +715,7 @@ a {
 }
 
 .chat-form {
-    margin-top: 12px;
+    margin-top: 16px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
@@ -730,7 +731,7 @@ a {
 }
 
 .chat-quick-replies {
-    margin-top: 12px;
+    margin-top: 10px;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -738,7 +739,7 @@ a {
 
 .chat-quick-replies .filter-chip {
     min-height: 44px;
-    padding: 10px 14px;
+    padding: 10px 16px;
     border-color: #b9d6e2;
     background: #f7fcff;
     color: #0e4f62;
@@ -751,6 +752,11 @@ a {
 
 .chat-quick-replies .filter-chip:active {
     background: #d9f1fc;
+}
+
+.chat-helper-text {
+    margin-top: 10px;
+    margin-bottom: 0;
 }
 
 .chat-fab:focus-visible,

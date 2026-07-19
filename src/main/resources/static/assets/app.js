@@ -551,7 +551,7 @@ function renderPublicChatWidget() {
                         </button>
                     `).join("")}
                 </div>
-                <p class="helper-text">Tap an option below or type your message. Commands still work if you prefer them.</p>
+                <p class="helper-text chat-helper-text">Tap an option or type your message.</p>
             </section>
         </div>
     `;

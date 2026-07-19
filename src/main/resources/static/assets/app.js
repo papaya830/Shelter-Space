@@ -81,6 +81,9 @@ const ENUM_OPTIONS = {
     turnAwayReason: ["NO_BEDS_AVAILABLE", "INTAKE_CLOSED", "INELIGIBLE", "BEHAVIOUR_RESTRICTION", "REFERRED_ELSEWHERE", "OTHER"]
 };
 
+const SHELTER_CACHE_KEY = "ss_shelters_v2";
+const LATENCY_WARN_MS = 4000;
+
 const state = {
     route: parseRoute(),
     shelters: [],
@@ -89,6 +92,10 @@ const state = {
     loadingShelters: false,
     loadingBookings: false,
     loadingTurnAwayLogs: false,
+    networkOffline: !navigator.onLine,
+    lastFetchLatencyMs: null,
+    sheltersFetchFailed: false,
+    sheltersCachedAt: null,
     publicSearch: "",
     publicAvailableOnly: false,
     publicOpenNowOnly: false,
@@ -156,6 +163,17 @@ function bindGlobalEvents() {
         render();
     });
 
+    window.addEventListener("online", () => {
+        state.networkOffline = false;
+        render();
+        loadShelters({ silent: true });
+    });
+
+    window.addEventListener("offline", () => {
+        state.networkOffline = true;
+        render();
+    });
+
     document.querySelector("#dialog-close").addEventListener("click", closeDialog);
     document.querySelector("#dialog-cancel").addEventListener("click", closeDialog);
     elements.dialogForm.addEventListener("submit", async (event) => {
@@ -204,7 +222,42 @@ async function ensureDataForRoute({ silent }) {
     }
 }
 
+function readShelterCache() {
+    try {
+        const raw = localStorage.getItem(SHELTER_CACHE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function writeShelterCache(data) {
+    try {
+        localStorage.setItem(SHELTER_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+    } catch {}
+}
+
 async function loadShelters({ silent }) {
+    // SWR step 1: hydrate from cache immediately so the UI is never blank
+    const cached = readShelterCache();
+    if (cached && state.shelters.length === 0) {
+        state.shelters = cached.data;
+        state.sheltersCachedAt = cached.ts;
+        if (!state.staffSelectedShelterId && state.shelters.length > 0) {
+            state.staffSelectedShelterId = state.shelters[0].id;
+        }
+        if (state.staffSelectedShelterId && !state.shelters.some((s) => s.id === state.staffSelectedShelterId)) {
+            state.staffSelectedShelterId = state.shelters[0]?.id ?? null;
+        }
+        hydrateStaffShelterForm();
+        hydrateStaffTurnAwayForm();
+        if (state.route.mode === "public" && state.route.view === "request") {
+            hydratePublicRequestForm();
+        }
+        render();
+    }
+
     state.loadingShelters = true;
     updateConnection("neutral", "Loading shelters");
     if (!silent) {
@@ -213,7 +266,12 @@ async function loadShelters({ silent }) {
     render();
 
     try {
-        state.shelters = await apiFetch("/api/shelters");
+        // SWR step 2: fetch fresh data in background
+        const fresh = await apiFetch("/api/shelters");
+        state.shelters = fresh;
+        state.sheltersFetchFailed = false;
+        writeShelterCache(fresh);
+        state.sheltersCachedAt = Date.now();
         if (!state.staffSelectedShelterId && state.shelters.length > 0) {
             state.staffSelectedShelterId = state.shelters[0].id;
         }
@@ -227,8 +285,13 @@ async function loadShelters({ silent }) {
         }
         updateConnection("success", state.route.mode === "staff" ? "Staff data ready" : "Public data ready");
     } catch (error) {
+        state.sheltersFetchFailed = true;
         updateConnection("error", "Shelter load failed");
-        showFlash(error.message || "Could not load shelters.", "error");
+        if (!cached) {
+            showFlash(error.message || "Could not load shelters.", "error");
+        } else if (!silent) {
+            showFlash("Could not refresh. Showing saved shelter data.", "warn");
+        }
     } finally {
         state.loadingShelters = false;
     }
@@ -551,6 +614,7 @@ function renderPublicApp() {
             </div>
 
             <main class="public-main">
+                ${renderConnectionBanner()}
                 ${renderFlash()}
                 ${renderPublicContent()}
                 ${renderPublicChatWidget()}
@@ -898,6 +962,7 @@ function renderStaffApp() {
                 </header>
 
                 ${renderFlash()}
+                ${renderConnectionBanner()}
                 ${renderStaffSummaryCards()}
                 ${renderStaffContent()}
                 <footer class="staff-footer">
@@ -1315,6 +1380,42 @@ function renderFlash() {
     return `<div class="flash ${state.flash.tone}">${escapeHtml(state.flash.message)}</div>`;
 }
 
+function renderConnectionBanner() {
+    if (state.networkOffline) {
+        const ageNote = state.sheltersCachedAt
+            ? ` Showing saved shelter data from ${formatRelativeAge(state.sheltersCachedAt)}.`
+            : " No saved data available.";
+        return `
+            <div class="connection-banner offline" role="alert" aria-live="assertive">
+                <span class="banner-icon" aria-hidden="true">⚠</span>
+                <span>You are offline.${ageNote}</span>
+            </div>`;
+    }
+    if (state.sheltersFetchFailed && state.sheltersCachedAt) {
+        return `
+            <div class="connection-banner warn" role="alert" aria-live="polite">
+                <span class="banner-icon" aria-hidden="true">⚠</span>
+                <span>Could not reach the server. Showing cached shelter data from ${formatRelativeAge(state.sheltersCachedAt)}.</span>
+            </div>`;
+    }
+    if (state.lastFetchLatencyMs != null && state.lastFetchLatencyMs > LATENCY_WARN_MS) {
+        return `
+            <div class="connection-banner warn" role="alert" aria-live="polite">
+                <span class="banner-icon" aria-hidden="true">◷</span>
+                <span>Slow connection detected (${state.lastFetchLatencyMs} ms). Data may be delayed.</span>
+            </div>`;
+    }
+    return "";
+}
+
+function formatRelativeAge(ts) {
+    const diffMs = Date.now() - ts;
+    const minutes = Math.max(1, Math.round(diffMs / 60000));
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    return `${hours} hr ago`;
+}
+
 function renderEmptyState(title, message) {
     return `
         <div class="empty-state panel">
@@ -1710,13 +1811,23 @@ async function submitStaffBookingAction() {
 }
 
 async function apiFetch(path, options = {}) {
-    const response = await fetch(path, {
-        headers: {
-            "Content-Type": "application/json",
-            ...(options.headers || {})
-        },
-        ...options
-    });
+    const t0 = performance.now();
+    let response;
+    try {
+        response = await fetch(path, {
+            headers: {
+                "Content-Type": "application/json",
+                ...(options.headers || {})
+            },
+            ...options
+        });
+    } catch (networkError) {
+        state.networkOffline = !navigator.onLine;
+        throw networkError;
+    }
+
+    state.lastFetchLatencyMs = Math.round(performance.now() - t0);
+    state.networkOffline = false;
 
     if (!response.ok) {
         let payload;

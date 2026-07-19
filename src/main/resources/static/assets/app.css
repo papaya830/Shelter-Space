@@ -1290,6 +1290,34 @@ tbody tr:hover {
     color: var(--danger);
 }
 
+.connection-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 14px;
+}
+
+.connection-banner.offline {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 1px solid #f6b3ab;
+}
+
+.connection-banner.warn {
+    background: var(--warn-soft);
+    color: #8a5e00;
+    border: 1px solid #f3cf84;
+}
+
+.banner-icon {
+    flex-shrink: 0;
+    font-size: 1.1rem;
+}
+
 .empty-state {
     text-align: center;
 }

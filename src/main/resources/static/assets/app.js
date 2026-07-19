@@ -91,6 +91,7 @@ const state = {
     dialogAction: null,
     dialogBookingId: null,
     chatClientSessionId: null,
+    chatOpen: false,
     chatAlias: "",
     chatInput: "",
     chatSending: false,
@@ -367,6 +368,22 @@ function bindViewEvents() {
         });
     });
 
+    const chatToggleButton = document.querySelector("[data-chat-toggle]");
+    if (chatToggleButton) {
+        chatToggleButton.addEventListener("click", () => {
+            state.chatOpen = !state.chatOpen;
+            render();
+        });
+    }
+
+    const chatCloseButton = document.querySelector("[data-chat-close]");
+    if (chatCloseButton) {
+        chatCloseButton.addEventListener("click", () => {
+            state.chatOpen = false;
+            render();
+        });
+    }
+
     const shelterSearch = document.querySelector("#staff-shelter-search");
     if (shelterSearch) {
         shelterSearch.addEventListener("input", (event) => {
@@ -465,34 +482,45 @@ function renderPublicChatWidget() {
         : `<div class="chat-line bot"><span class="chat-role">Bot</span><p>Send HELP to see commands.</p></div>`;
 
     return `
-        <section class="panel public-chat-panel">
-            <div class="chat-header">
-                <div>
-                    <p class="eyebrow">Keyword chatbot demo</p>
-                    <h3>Text-style bed request flow</h3>
+        <div class="chat-fab-shell">
+            <button
+                type="button"
+                class="chat-fab"
+                data-chat-toggle="true"
+                aria-expanded="${state.chatOpen ? "true" : "false"}"
+                aria-controls="public-chat-panel"
+            >
+                ${state.chatOpen ? "Close chat" : "Chat"}
+            </button>
+            <section id="public-chat-panel" class="panel public-chat-panel ${state.chatOpen ? "open" : ""}">
+                <div class="chat-header">
+                    <div>
+                        <p class="eyebrow">Keyword chatbot demo</p>
+                        <h3>Text-style bed request flow</h3>
+                    </div>
+                    <button type="button" class="button ghost inline" data-chat-close="true">Close</button>
                 </div>
-                <span class="helper-text">No login required</span>
-            </div>
-            <label class="field chat-alias-field">
-                <span>Name staff can call you</span>
-                <input id="chat-alias" maxlength="120" value="${escapeHtml(state.chatAlias)}" placeholder="e.g. Sam">
-            </label>
-            <div class="chat-transcript" aria-live="polite">
-                ${transcript}
-            </div>
-            <form id="keyword-chat-form" class="chat-form">
-                <input id="chat-message" maxlength="280" value="${escapeHtml(state.chatInput)}" placeholder="Type BED, STATUS, HELP..." ${state.chatSending ? "disabled" : ""}>
-                <button class="button" type="submit" ${state.chatSending ? "disabled" : ""}>Send</button>
-            </form>
-            <div class="chat-quick-replies">
-                ${(state.chatNextInputs || ["BED", "HELP"]).slice(0, 4).map((reply) => `
-                    <button class="filter-chip" type="button" data-chat-reply="${escapeHtml(reply)}" ${state.chatSending ? "disabled" : ""}>
-                        ${escapeHtml(reply)}
-                    </button>
-                `).join("")}
-            </div>
-            <p class="helper-text">Commands are case-insensitive. Use BED, STATUS, CANCEL, DIR, HELP, number choices, and YES/NO.</p>
-        </section>
+                <label class="field chat-alias-field">
+                    <span>Name staff can call you</span>
+                    <input id="chat-alias" maxlength="120" value="${escapeHtml(state.chatAlias)}" placeholder="e.g. Sam">
+                </label>
+                <div class="chat-transcript" aria-live="polite">
+                    ${transcript}
+                </div>
+                <form id="keyword-chat-form" class="chat-form">
+                    <input id="chat-message" maxlength="280" value="${escapeHtml(state.chatInput)}" placeholder="Type BED, STATUS, HELP..." ${state.chatSending ? "disabled" : ""}>
+                    <button class="button" type="submit" ${state.chatSending ? "disabled" : ""}>Send</button>
+                </form>
+                <div class="chat-quick-replies">
+                    ${(state.chatNextInputs || ["BED", "HELP"]).slice(0, 4).map((reply) => `
+                        <button class="filter-chip" type="button" data-chat-reply="${escapeHtml(reply)}" ${state.chatSending ? "disabled" : ""}>
+                            ${escapeHtml(reply)}
+                        </button>
+                    `).join("")}
+                </div>
+                <p class="helper-text">Commands are case-insensitive. Use BED, STATUS, CANCEL, DIR, HELP, number choices, and YES/NO.</p>
+            </section>
+        </div>
     `;
 }
 

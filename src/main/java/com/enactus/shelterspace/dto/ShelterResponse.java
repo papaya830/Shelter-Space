@@ -41,7 +41,10 @@ public record ShelterResponse(
         String notes,
         String perks,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        Double latitude,
+        Double longitude,
+        Double distanceKm
 ) {
 
     public static ShelterResponse fromEntity(Shelter shelter) {
@@ -77,7 +80,50 @@ public record ShelterResponse(
                 shelter.getNotes(),
                 shelter.getPerks(),
                 shelter.getCreatedAt(),
-                shelter.getUpdatedAt()
+                shelter.getUpdatedAt(),
+                shelter.getLatitude(),
+                shelter.getLongitude(),
+                null
+        );
+    }
+
+    public static ShelterResponse fromEntityWithDistance(Shelter shelter, double distanceKm) {
+        return new ShelterResponse(
+                shelter.getId(),
+                shelter.getName(),
+                shelter.getOrganizationName(),
+                shelter.getCity(),
+                shelter.getAddress(),
+                shelter.isConfidentialAddress(),
+                shelter.getPhoneNumber(),
+                shelter.getOperationalStatus(),
+                shelter.getBarrierLevel(),
+                shelter.getPopulationType(),
+                shelter.getIntakeType(),
+                shelter.getTotalCapacity(),
+                shelter.getCurrentOccupancy(),
+                shelter.getAvailableBeds(),
+                shelter.isOpen24Hours(),
+                shelter.isCallAheadRequired(),
+                shelter.isPetsAllowed(),
+                shelter.isWheelchairAccessible(),
+                shelter.isAcceptsLargeItems(),
+                shelter.isLegalNameRequired(),
+                shelter.getIntakeStartTime(),
+                shelter.getIntakeCutoffTime(),
+                shelter.getMaxStayDays(),
+                shelter.getMinimumAge(),
+                shelter.getMaximumAge(),
+                shelter.getPrograms(),
+                shelter.getRules(),
+                shelter.getIntakeInstructions(),
+                shelter.getNotes(),
+                shelter.getPerks(),
+                shelter.getCreatedAt(),
+                shelter.getUpdatedAt(),
+                shelter.getLatitude(),
+                shelter.getLongitude(),
+                distanceKm
         );
     }
 }

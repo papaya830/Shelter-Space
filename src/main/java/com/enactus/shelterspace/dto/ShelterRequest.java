@@ -91,6 +91,9 @@ public class ShelterRequest {
     @Size(max = 1000)
     private String perks;
 
+    private Double latitude;
+    private Double longitude;
+
     @AssertTrue(message = "Maximum age must be greater than or equal to minimum age")
     public boolean isAgeRangeValid() {
         return minimumAge == null || maximumAge == null || maximumAge >= minimumAge;

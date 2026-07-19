@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -29,6 +30,14 @@ public class ShelterController {
     @GetMapping
     public List<ShelterResponse> getAll() {
         return shelterService.getAll();
+    }
+
+    @GetMapping("/nearby")
+    public List<ShelterResponse> getNearby(
+            @RequestParam double lat,
+            @RequestParam double lng,
+            @RequestParam(defaultValue = "50") double radius) {
+        return shelterService.getNearby(lat, lng, radius);
     }
 
     @GetMapping("/{id}")

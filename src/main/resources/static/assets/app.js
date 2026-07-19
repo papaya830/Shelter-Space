@@ -528,7 +528,7 @@ function renderPublicChatWidget() {
             <section id="public-chat-panel" class="panel public-chat-panel ${state.chatOpen ? "open" : ""}">
                 <div class="chat-header">
                     <div>
-                        <p class="eyebrow">Shelter assistant</p>
+                        <p class="eyebrow chat-eyebrow">Shelter assistant</p>
                         <h3>Bed request chat</h3>
                     </div>
                     <button type="button" class="button ghost inline" data-chat-close="true">Close</button>
@@ -1692,11 +1692,25 @@ function persistChatAlias() {
 
 function chatReplyLabel(value) {
     const token = String(value || "").toUpperCase();
+    if (/^\d+$/.test(token)) {
+        return `Choose #${token}`;
+    }
+    const rangeMatch = token.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+        return `Choose ${rangeMatch[1]}-${rangeMatch[2]}`;
+    }
     return CHAT_REPLY_LABELS[token] || value;
 }
 
 function chatReplyHint(value) {
     const token = String(value || "").toUpperCase();
+    if (/^\d+$/.test(token)) {
+        return `Choose shelter option ${token}.`;
+    }
+    const rangeMatch = token.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+        return `Choose a shelter from option ${rangeMatch[1]} to ${rangeMatch[2]}.`;
+    }
     return CHAT_REPLY_HINTS[token] || `Send ${token}`;
 }
 
@@ -1721,9 +1735,13 @@ async function submitChatMessage(rawMessage) {
             })
         });
         if (Array.isArray(response.messages)) {
-            response.messages.forEach((entry) => {
-                state.chatMessages.push({ role: "bot", text: entry });
-            });
+            const mergedResponse = response.messages
+                .map((entry) => String(entry || "").trim())
+                .filter(Boolean)
+                .join(" ");
+            if (mergedResponse) {
+                state.chatMessages.push({ role: "bot", text: mergedResponse });
+            }
         }
         state.chatNextInputs = Array.isArray(response.nextInputs) && response.nextInputs.length
             ? response.nextInputs

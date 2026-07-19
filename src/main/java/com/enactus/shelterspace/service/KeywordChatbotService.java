@@ -31,7 +31,6 @@ public class KeywordChatbotService {
 
     private static final Duration SESSION_TTL = Duration.ofMinutes(5);
     private static final int PAGE_SIZE = 2;
-    private static final int MAX_SEGMENT_LENGTH = 160;
 
     private final ShelterRepository shelterRepository;
     private final GuestProfileRepository guestProfileRepository;
@@ -103,33 +102,34 @@ public class KeywordChatbotService {
         session.offeredShelterIds = available.stream().map(Shelter::getId).toList();
         session.pageStart = 0;
         session.state = ChatState.CHOOSING;
-        return respond(session, renderShelterPage(session), List.of("1-2", "MORE", "STATUS", "CANCEL"));
+        return respond(session, renderShelterPage(session), buildChoiceNextInputs(session));
     }
 
     private ChatbotMessageResponse handleChoice(ChatSession session, String normalized) {
         if ("MORE".equals(normalized)) {
             int nextStart = session.pageStart + PAGE_SIZE;
             if (nextStart >= session.offeredShelterIds.size()) {
+                List<Shelter> page = getCurrentPageShelters(session);
                 return respond(session,
-                        "No more shelters in the list.",
-                        List.of("1-2", "BED", "STATUS", "HELP"));
+                        "You are already on the last page. Reply with " + renderChoiceNumbers(page.size()) + " to choose.",
+                        buildChoiceNextInputs(session));
             }
             session.pageStart = nextStart;
-            return respond(session, renderShelterPage(session), List.of("1-2", "MORE", "STATUS", "CANCEL"));
-        }
-
-        Integer selection = parsePositiveInt(normalized);
-        if (selection == null) {
-            return respond(session,
-                    "Please choose a number from this list, or send MORE to see more shelters.",
-                    List.of("1-2", "MORE", "STATUS", "CANCEL"));
+            return respond(session, renderShelterPage(session), buildChoiceNextInputs(session));
         }
 
         List<Shelter> page = getCurrentPageShelters(session);
+        Integer selection = parsePositiveInt(normalized);
+        if (selection == null) {
+            return respond(session,
+                    "Please reply with " + renderChoiceNumbers(page.size()) + " from this list, or send MORE to see more shelters.",
+                    buildChoiceNextInputs(session));
+        }
+
         if (selection < 1 || selection > page.size()) {
             return respond(session,
-                    "That number is not on this page. Please choose one of the listed options.",
-                    List.of("1-2", "MORE", "STATUS", "CANCEL"));
+                    "That number is not on this page. Please choose " + renderChoiceNumbers(page.size()) + ".",
+                    buildChoiceNextInputs(session));
         }
 
         Shelter shelter = page.get(selection - 1);
@@ -306,24 +306,59 @@ public class KeywordChatbotService {
 
     private String renderShelterPage(ChatSession session) {
         List<Shelter> page = getCurrentPageShelters(session);
-        StringBuilder builder = new StringBuilder("Here are shelters with space right now:");
+        StringBuilder builder = new StringBuilder("Shelters with space right now:");
         for (int i = 0; i < page.size(); i++) {
             Shelter shelter = page.get(i);
             builder.append('\n')
                     .append(i + 1)
                     .append(") ")
-                    .append(shelter.getName())
-                    .append(" - ")
+                    .append(shelter.getName());
+            builder.append('\n')
+                    .append("   Beds: ")
                     .append(shelter.getAvailableBeds())
-                    .append(" bed(s) open - ")
-                    .append(barrierLabel(shelter))
-                    .append(", ")
+                    .append(" open");
+            builder.append('\n')
+                    .append("   Access: ")
+                    .append(barrierLabel(shelter));
+            builder.append('\n')
+                    .append("   Serves: ")
                     .append(populationLabel(shelter));
         }
         if (session.pageStart + PAGE_SIZE < session.offeredShelterIds.size()) {
-            builder.append("\nReply 1-").append(page.size()).append(" to choose, or MORE to see more.");
+            builder.append("\nReply with ").append(renderChoiceNumbers(page.size())).append(" to choose, or MORE for more shelters.");
         } else {
-            builder.append("\nReply 1-").append(page.size()).append(" to choose.");
+            builder.append("\nReply with ").append(renderChoiceNumbers(page.size())).append(" to choose.");
+        }
+        return builder.toString();
+    }
+
+    private List<String> buildChoiceNextInputs(ChatSession session) {
+        List<Shelter> page = getCurrentPageShelters(session);
+        List<String> inputs = new ArrayList<>();
+        for (int i = 1; i <= page.size(); i++) {
+            inputs.add(String.valueOf(i));
+        }
+        if (session.pageStart + PAGE_SIZE < session.offeredShelterIds.size()) {
+            inputs.add("MORE");
+        }
+        inputs.add("STATUS");
+        inputs.add("CANCEL");
+        return inputs;
+    }
+
+    private String renderChoiceNumbers(int count) {
+        if (count <= 1) {
+            return "1";
+        }
+        if (count == 2) {
+            return "1 or 2";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 1; i <= count; i++) {
+            if (i > 1) {
+                builder.append(i == count ? ", or " : ", ");
+            }
+            builder.append(i);
         }
         return builder.toString();
     }
@@ -352,28 +387,11 @@ public class KeywordChatbotService {
     private ChatbotMessageResponse respond(ChatSession session, String message, List<String> nextInputs) {
         String withNext = message + " Next: " + String.join(", ", nextInputs) + ".";
         return new ChatbotMessageResponse(
-                splitIntoSegments(withNext),
+                List.of(withNext),
                 nextInputs,
                 session.state.name(),
                 session.lastBookingId
         );
-    }
-
-    private List<String> splitIntoSegments(String text) {
-        List<String> segments = new ArrayList<>();
-        String remaining = text.trim();
-        while (remaining.length() > MAX_SEGMENT_LENGTH) {
-            int splitAt = remaining.lastIndexOf(' ', MAX_SEGMENT_LENGTH);
-            if (splitAt <= 0) {
-                splitAt = MAX_SEGMENT_LENGTH;
-            }
-            segments.add(remaining.substring(0, splitAt).trim());
-            remaining = remaining.substring(splitAt).trim();
-        }
-        if (!remaining.isEmpty()) {
-            segments.add(remaining);
-        }
-        return segments;
     }
 
     private String safeTrim(String value) {

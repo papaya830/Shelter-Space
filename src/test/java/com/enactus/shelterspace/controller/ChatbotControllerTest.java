@@ -88,8 +88,8 @@ class ChatbotControllerTest {
                                 """.formatted(sessionId, alias)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("CHOOSING"))
-                .andExpect(jsonPath("$.messages[0]", containsString("Here are shelters with space right now")))
-                .andExpect(jsonPath("$.nextInputs[0]").value("1-2"));
+                .andExpect(jsonPath("$.messages[0]", containsString("Shelters with space right now")))
+                .andExpect(jsonPath("$.nextInputs[0]").value("1"));
 
         mockMvc.perform(post("/api/chatbot/messages")
                         .contentType(MediaType.APPLICATION_JSON)

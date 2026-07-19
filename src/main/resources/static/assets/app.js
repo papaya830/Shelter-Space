@@ -82,6 +82,8 @@ const ENUM_OPTIONS = {
 };
 
 const SHELTER_CACHE_KEY = "ss_shelters_v2";
+const FILTER_CACHE_KEY = "ss_filters_v1";
+const DEVICE_ID_KEY = "ss_device_id";
 const LATENCY_WARN_MS = 4000;
 
 const state = {
@@ -148,6 +150,14 @@ const elements = {
 
 async function init() {
     bootstrapChatState();
+    const savedFilters = readFilterState();
+    if (savedFilters) {
+        FILTER_KEYS.forEach((key) => {
+            if (savedFilters[key] !== undefined) {
+                state[key] = savedFilters[key];
+            }
+        });
+    }
     bindGlobalEvents();
     await ensureDataForRoute({ silent: false });
     render();
@@ -226,7 +236,12 @@ function readShelterCache() {
     try {
         const raw = localStorage.getItem(SHELTER_CACHE_KEY);
         if (!raw) return null;
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        const currentDeviceId = ensureDeviceId();
+        if (currentDeviceId && parsed.deviceId && parsed.deviceId !== currentDeviceId) {
+            return null;
+        }
+        return parsed;
     } catch {
         return null;
     }
@@ -234,7 +249,48 @@ function readShelterCache() {
 
 function writeShelterCache(data) {
     try {
-        localStorage.setItem(SHELTER_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+        localStorage.setItem(SHELTER_CACHE_KEY, JSON.stringify({ data, ts: Date.now(), deviceId: ensureDeviceId() }));
+    } catch {}
+}
+
+function ensureDeviceId() {
+    try {
+        let id = localStorage.getItem(DEVICE_ID_KEY);
+        if (!id) {
+            id = crypto.randomUUID();
+            localStorage.setItem(DEVICE_ID_KEY, id);
+        }
+        return id;
+    } catch {
+        return null;
+    }
+}
+
+const FILTER_KEYS = [
+    "publicAvailableOnly",
+    "publicOpenNowOnly",
+    "publicCallAheadOnly",
+    "publicWheelchairOnly",
+    "publicPetsOnly",
+    "publicBarrierLevel",
+    "publicPopulationType"
+];
+
+function readFilterState() {
+    try {
+        const raw = localStorage.getItem(FILTER_CACHE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function writeFilterState() {
+    try {
+        const snapshot = {};
+        FILTER_KEYS.forEach((key) => { snapshot[key] = state[key]; });
+        localStorage.setItem(FILTER_CACHE_KEY, JSON.stringify(snapshot));
     } catch {}
 }
 
@@ -455,6 +511,7 @@ function bindViewEvents() {
             state.publicPetsOnly = false;
             state.publicBarrierLevel = "";
             state.publicPopulationType = "";
+            writeFilterState();
             render();
         });
     });
@@ -463,6 +520,7 @@ function bindViewEvents() {
         button.addEventListener("click", () => {
             const key = button.dataset.publicToggle;
             state[key] = !state[key];
+            writeFilterState();
             render();
         });
     });
@@ -470,6 +528,7 @@ function bindViewEvents() {
     document.querySelectorAll("[data-public-filter-select]").forEach((select) => {
         select.addEventListener("change", (event) => {
             state[event.target.name] = event.target.value;
+            writeFilterState();
             render();
         });
     });

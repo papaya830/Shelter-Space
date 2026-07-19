@@ -632,24 +632,24 @@ function renderPublicShelterList() {
     return `
         <section class="public-tools panel">
             <div class="public-filter-stack">
-                <label class="field public-search-field">
-                    <span class="sr-only">Search by shelter name or neighborhood</span>
-                    <input id="public-search" value="${escapeHtml(state.publicSearch)}" placeholder="Search by name or neighborhood">
-                </label>
-                <div class="public-controls-row">
-                    <div class="public-select-grid">
-                        ${renderFilterSelect("publicBarrierLevel", "Any barrier level", state.publicBarrierLevel, ENUM_OPTIONS.barrierLevel)}
-                        ${renderFilterSelect("publicPopulationType", "Any guest type", state.publicPopulationType, ENUM_OPTIONS.populationType)}
-                    </div>
+                <div class="public-search-row">
+                    <label class="field public-search-field">
+                        <span class="sr-only">Search by shelter name or neighborhood</span>
+                        <input id="public-search" value="${escapeHtml(state.publicSearch)}" placeholder="Search by name or neighborhood">
+                    </label>
                     <div class="public-location-actions">
                         ${state.nearbyMode
-                            ? `<span class="location-active-label">Showing shelters near you</span>
-                               <button class="button ghost inline" data-action="clear-location">Clear location</button>`
+                            ? `<span class="location-active-label">Near you</span>
+                               <button class="button ghost inline" data-action="clear-location">Clear</button>`
                             : `<button class="button secondary inline" data-action="use-location" ${state.locationLoading ? "disabled" : ""}>
                                    ${state.locationLoading ? "Locating…" : "Use my location"}
                                </button>`}
-                        <button class="button secondary inline public-refresh" data-action="refresh">Refresh</button>
                     </div>
+                </div>
+                <div class="public-dropdown-row">
+                    ${renderFilterSelect("publicBarrierLevel", "Any barrier level", state.publicBarrierLevel, ENUM_OPTIONS.barrierLevel)}
+                    ${renderFilterSelect("publicPopulationType", "Any guest type", state.publicPopulationType, ENUM_OPTIONS.populationType)}
+                    <button class="button secondary inline public-refresh" data-action="refresh">Refresh</button>
                 </div>
                 <div class="toggle-row public-filter-row">
                     ${renderPublicFilterChip("allFake", "All", !state.publicAvailableOnly && !state.publicOpenNowOnly && !state.publicCallAheadOnly && !state.publicWheelchairOnly && !state.publicPetsOnly && !state.publicBarrierLevel && !state.publicPopulationType)}

@@ -72,7 +72,7 @@ public class KeywordChatbotService {
 
         if (session.alias == null || session.alias.isBlank()) {
             return respond(session,
-                    "Enter the name you want staff to call you.",
+                    "Before we start, what name should staff call you?",
                     List.of("Type your alias")
             );
         }
@@ -86,7 +86,7 @@ public class KeywordChatbotService {
             case DURATION -> handleDuration(session, normalized);
             case CONFIRM -> handleConfirm(session, normalized);
             case WAITING, IDLE -> respond(session,
-                    "I only understand keywords. Start with BED.",
+                    "I can only follow chat keywords right now. Send BED to start a bed request.",
                     List.of("BED", "STATUS", "CANCEL", "HELP"));
         };
     }
@@ -96,7 +96,7 @@ public class KeywordChatbotService {
         if (available.isEmpty()) {
             session.resetFlow();
             return respond(session,
-                    "No shelters with open beds right now.",
+                    "I cannot find an open bed right now. You can check back soon or send STATUS for your latest request.",
                     List.of("STATUS", "HELP"));
         }
 
@@ -121,14 +121,14 @@ public class KeywordChatbotService {
         Integer selection = parsePositiveInt(normalized);
         if (selection == null) {
             return respond(session,
-                    "Pick a number from the list or send MORE.",
+                    "Please choose a number from this list, or send MORE to see more shelters.",
                     List.of("1-2", "MORE", "STATUS", "CANCEL"));
         }
 
         List<Shelter> page = getCurrentPageShelters(session);
         if (selection < 1 || selection > page.size()) {
             return respond(session,
-                    "That number is out of range for this page.",
+                    "That number is not on this page. Please choose one of the listed options.",
                     List.of("1-2", "MORE", "STATUS", "CANCEL"));
         }
 
@@ -136,7 +136,7 @@ public class KeywordChatbotService {
         session.selectedShelterId = shelter.getId();
         session.state = ChatState.DURATION;
         return respond(session,
-                shelter.getName() + ". How many nights? (1-14)",
+                "You chose " + shelter.getName() + ". How many nights do you need? (1-14)",
                 List.of("Number of nights"));
     }
 
@@ -144,7 +144,7 @@ public class KeywordChatbotService {
         Integer nights = parsePositiveInt(normalized);
         if (nights == null || nights < 1 || nights > 14) {
             return respond(session,
-                    "Enter nights as a number from 1 to 14.",
+                    "Please enter the number of nights as 1 to 14.",
                     List.of("1-14", "STATUS", "CANCEL"));
         }
 
@@ -152,7 +152,7 @@ public class KeywordChatbotService {
         session.state = ChatState.CONFIRM;
         Shelter shelter = getSelectedShelter(session);
         return respond(session,
-                "Request bed at " + shelter.getName() + ", " + nights + " night(s)? YES or NO.",
+                "Confirm request: " + shelter.getName() + " for " + nights + " night(s). Reply YES to send or NO to cancel.",
                 List.of("YES", "NO", "STATUS", "CANCEL"));
     }
 
@@ -160,12 +160,12 @@ public class KeywordChatbotService {
         if ("NO".equals(normalized)) {
             session.resetFlow();
             return respond(session,
-                    "Okay, no request was sent.",
+                    "No problem. I did not send the request.",
                     List.of("BED", "STATUS", "HELP"));
         }
         if (!"YES".equals(normalized)) {
             return respond(session,
-                    "Please reply YES or NO.",
+                    "Please reply with YES or NO.",
                     List.of("YES", "NO", "STATUS", "CANCEL"));
         }
 
@@ -192,7 +192,7 @@ public class KeywordChatbotService {
         session.nights = null;
         String code = "A" + booking.id();
         return respond(session,
-                "Requested. Code " + code + ". We'll update you after staff review.",
+                "Request sent. Your code is " + code + ". Staff will review it and you can check with STATUS anytime.",
                 List.of("STATUS", "CANCEL", "DIR", "HELP"));
     }
 
@@ -200,14 +200,14 @@ public class KeywordChatbotService {
         BookingResponse booking = getLatestBooking(session);
         if (booking == null) {
             return respond(session,
-                    "No booking found yet for this chat session.",
+                    "I do not see a booking for this chat yet. Send BED to start a new request.",
                     List.of("BED", "HELP"));
         }
 
         session.lastBookingId = booking.id();
         String base = "Status: " + booking.status() + " at " + booking.shelter().name() + ". Code A" + booking.id() + ".";
         if (booking.status() == BookingStatus.ADMITTED || booking.status() == BookingStatus.CHECKED_IN) {
-            return respond(session, base + " Reply DIR for directions.", List.of("DIR", "CANCEL", "HELP"));
+            return respond(session, base + " Send DIR for address and phone details.", List.of("DIR", "CANCEL", "HELP"));
         }
         return respond(session, base, List.of("BED", "CANCEL", "HELP"));
     }
@@ -216,13 +216,13 @@ public class KeywordChatbotService {
         BookingResponse booking = getLatestBooking(session);
         if (booking == null) {
             return respond(session,
-                    "No active booking to cancel.",
+                    "There is no active REQUESTED or WAITLISTED booking to cancel.",
                     List.of("BED", "STATUS", "HELP"));
         }
 
         if (!(booking.status() == BookingStatus.REQUESTED || booking.status() == BookingStatus.WAITLISTED)) {
             return respond(session,
-                    "Only REQUESTED or WAITLISTED bookings can be cancelled.",
+                    "You can only cancel bookings that are still REQUESTED or WAITLISTED.",
                     List.of("STATUS", "DIR", "HELP"));
         }
 
@@ -234,7 +234,7 @@ public class KeywordChatbotService {
             session.lastBookingId = cancelled.id();
             session.resetFlow();
             return respond(session,
-                    "Cancelled booking A" + cancelled.id() + ".",
+                    "Cancelled booking A" + cancelled.id() + ". If you still need a bed, send BED to start again.",
                     List.of("BED", "STATUS", "HELP"));
         } catch (BookingConflictException conflict) {
             return respond(session,
@@ -247,18 +247,18 @@ public class KeywordChatbotService {
         BookingResponse booking = getLatestBooking(session);
         if (booking == null) {
             return respond(session,
-                    "No active booking found for directions.",
+                    "I cannot share directions yet because there is no booking on this chat. Send STATUS or BED first.",
                     List.of("STATUS", "BED", "HELP"));
         }
 
         Shelter shelter = shelterRepository.findById(booking.shelter().id()).orElse(null);
         if (shelter == null) {
             return respond(session,
-                    "Shelter details are unavailable right now.",
+                    "I cannot load shelter details right now. Please try STATUS again in a moment.",
                     List.of("STATUS", "HELP"));
         }
 
-        String text = shelter.getName() + ": " + shelter.getAddress() + ". "
+        String text = "Directions for " + shelter.getName() + ": " + shelter.getAddress() + ". "
                 + (shelter.getPhoneNumber() == null ? "" : "Call " + shelter.getPhoneNumber() + ". ");
         return respond(session, text.trim(), List.of("STATUS", "CANCEL", "HELP"));
     }
@@ -306,24 +306,24 @@ public class KeywordChatbotService {
 
     private String renderShelterPage(ChatSession session) {
         List<Shelter> page = getCurrentPageShelters(session);
-        StringBuilder builder = new StringBuilder("Shelters with space:");
+        StringBuilder builder = new StringBuilder("Here are shelters with space right now:");
         for (int i = 0; i < page.size(); i++) {
             Shelter shelter = page.get(i);
             builder.append('\n')
                     .append(i + 1)
                     .append(") ")
                     .append(shelter.getName())
-                    .append(" (")
+                    .append(" - ")
                     .append(shelter.getAvailableBeds())
-                    .append(") - ")
+                    .append(" bed(s) open - ")
                     .append(barrierLabel(shelter))
                     .append(", ")
                     .append(populationLabel(shelter));
         }
         if (session.pageStart + PAGE_SIZE < session.offeredShelterIds.size()) {
-            builder.append("\nReply 1-").append(page.size()).append(", or MORE.");
+            builder.append("\nReply 1-").append(page.size()).append(" to choose, or MORE to see more.");
         } else {
-            builder.append("\nReply 1-").append(page.size()).append(".");
+            builder.append("\nReply 1-").append(page.size()).append(" to choose.");
         }
         return builder.toString();
     }
@@ -346,7 +346,7 @@ public class KeywordChatbotService {
     }
 
     private String helpText() {
-        return "Commands: BED, STATUS, CANCEL, MORE, DIR, HELP. Use numbers to pick options and YES/NO to confirm.";
+        return "I can help you request a shelter bed. Commands: BED, STATUS, CANCEL, MORE, DIR, HELP. Use numbers to choose shelters and YES/NO to confirm.";
     }
 
     private ChatbotMessageResponse respond(ChatSession session, String message, List<String> nextInputs) {

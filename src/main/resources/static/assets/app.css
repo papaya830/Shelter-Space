@@ -606,6 +606,7 @@ a {
     border: none;
     border-radius: 999px;
     padding: 14px 20px;
+    min-height: 44px;
     background: var(--accent);
     color: white;
     font-weight: 700;
@@ -615,6 +616,10 @@ a {
 
 .chat-fab:hover {
     background: var(--accent-strong);
+}
+
+.chat-fab:active {
+    transform: translateY(1px);
 }
 
 .public-chat-panel {
@@ -689,11 +694,11 @@ a {
 }
 
 .chat-role {
-    font-size: 0.76rem;
+    font-size: 0.84rem;
     font-weight: 600;
-    color: var(--muted);
+    color: #556271;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.05em;
 }
 
 .chat-form {
@@ -705,6 +710,7 @@ a {
 
 .chat-form input {
     width: 100%;
+    min-height: 44px;
     border-radius: 12px;
     border: 1px solid var(--line);
     padding: 12px 14px;
@@ -716,6 +722,38 @@ a {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+.chat-quick-replies .filter-chip {
+    min-height: 44px;
+    padding: 10px 14px;
+}
+
+.chat-fab:focus-visible,
+.chat-form input:focus-visible,
+.chat-form .button:focus-visible,
+.chat-quick-replies .filter-chip:focus-visible {
+    outline: 3px solid rgba(15, 95, 115, 0.26);
+    outline-offset: 2px;
+}
+
+.chat-form .button,
+.chat-quick-replies .filter-chip {
+    min-height: 44px;
+}
+
+.chat-form .button:active,
+.chat-quick-replies .filter-chip:active {
+    transform: translateY(1px);
+}
+
+.chat-form .button:disabled,
+.chat-quick-replies .filter-chip:disabled,
+.chat-form input:disabled,
+.chat-fab:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+    box-shadow: none;
 }
 
 .field,

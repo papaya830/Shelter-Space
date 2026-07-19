@@ -14,6 +14,28 @@ const STATUS_TONES = {
     AVAILABLE: "success"
 };
 
+const CHAT_REPLY_LABELS = {
+    BED: "Find a bed",
+    STATUS: "Check my request",
+    HELP: "See options",
+    CANCEL: "Cancel request",
+    DIR: "Get directions",
+    YES: "Yes",
+    NO: "No",
+    MORE: "Show more shelters"
+};
+
+const CHAT_REPLY_HINTS = {
+    BED: "Start a new bed request.",
+    STATUS: "Check your latest request status.",
+    HELP: "See what this chat can do.",
+    CANCEL: "Cancel a pending request.",
+    DIR: "Get shelter address and phone details.",
+    YES: "Confirm and send this step.",
+    NO: "Decline or go back for this step.",
+    MORE: "See the next list of shelter options."
+};
+
 const APP_NOW = new Date("2026-07-18T12:00:00-07:00");
 
 const STAFF_FILTERS = [
@@ -254,6 +276,17 @@ async function loadTurnAwayLogs({ silent }) {
 function render() {
     elements.root.innerHTML = state.route.mode === "staff" ? renderStaffApp() : renderPublicApp();
     bindViewEvents();
+    queueChatAutoScroll();
+}
+
+function queueChatAutoScroll() {
+    window.requestAnimationFrame(() => {
+        const transcript = document.querySelector(".chat-transcript");
+        if (!transcript) {
+            return;
+        }
+        transcript.scrollTop = transcript.scrollHeight;
+    });
 }
 
 function bindViewEvents() {
@@ -479,7 +512,7 @@ function renderPublicChatWidget() {
                 <p>${escapeHtml(entry.text)}</p>
             </div>
         `).join("")
-        : `<div class="chat-line bot"><span class="chat-role">Bot</span><p>Send HELP to see commands.</p></div>`;
+        : `<div class="chat-line bot"><span class="chat-role">Bot</span><p>I can help you find a bed or check your request.</p></div>`;
 
     return `
         <div class="chat-fab-shell">
@@ -490,35 +523,35 @@ function renderPublicChatWidget() {
                 aria-expanded="${state.chatOpen ? "true" : "false"}"
                 aria-controls="public-chat-panel"
             >
-                ${state.chatOpen ? "Close chat" : "Chat"}
+                ${state.chatOpen ? "Close help" : "Get bed help"}
             </button>
             <section id="public-chat-panel" class="panel public-chat-panel ${state.chatOpen ? "open" : ""}">
                 <div class="chat-header">
                     <div>
-                        <p class="eyebrow">Keyword chatbot demo</p>
-                        <h3>Text-style bed request flow</h3>
+                        <p class="eyebrow">Shelter assistant</p>
+                        <h3>Bed request chat</h3>
                     </div>
                     <button type="button" class="button ghost inline" data-chat-close="true">Close</button>
                 </div>
                 <label class="field chat-alias-field">
-                    <span>Name staff can call you</span>
+                    <span>Name to use (optional)</span>
                     <input id="chat-alias" maxlength="120" value="${escapeHtml(state.chatAlias)}" placeholder="e.g. Sam">
                 </label>
                 <div class="chat-transcript" aria-live="polite">
                     ${transcript}
                 </div>
                 <form id="keyword-chat-form" class="chat-form">
-                    <input id="chat-message" maxlength="280" value="${escapeHtml(state.chatInput)}" placeholder="Type BED, STATUS, HELP..." ${state.chatSending ? "disabled" : ""}>
+                    <input id="chat-message" maxlength="280" value="${escapeHtml(state.chatInput)}" placeholder="Type a message or tap an option..." ${state.chatSending ? "disabled" : ""}>
                     <button class="button" type="submit" ${state.chatSending ? "disabled" : ""}>Send</button>
                 </form>
                 <div class="chat-quick-replies">
                     ${(state.chatNextInputs || ["BED", "HELP"]).slice(0, 4).map((reply) => `
-                        <button class="filter-chip" type="button" data-chat-reply="${escapeHtml(reply)}" ${state.chatSending ? "disabled" : ""}>
-                            ${escapeHtml(reply)}
+                        <button class="filter-chip" type="button" data-chat-reply="${escapeHtml(reply)}" title="${escapeHtml(chatReplyHint(reply))}" aria-label="${escapeHtml(chatReplyHint(reply))}" ${state.chatSending ? "disabled" : ""}>
+                            ${escapeHtml(chatReplyLabel(reply))}
                         </button>
                     `).join("")}
                 </div>
-                <p class="helper-text">Commands are case-insensitive. Use BED, STATUS, CANCEL, DIR, HELP, number choices, and YES/NO.</p>
+                <p class="helper-text">Tap an option below or type your message. Commands still work if you prefer them.</p>
             </section>
         </div>
     `;
@@ -1643,7 +1676,7 @@ function bootstrapChatState() {
     state.chatAlias = storedAlias;
     state.chatMessages = [{
         role: "bot",
-        text: "Welcome. Send HELP for commands."
+        text: "I can help you find a bed or check your request."
     }];
     if (!storedSessionId) {
         window.localStorage.setItem("chatClientSessionId", state.chatClientSessionId);
@@ -1655,6 +1688,16 @@ function persistChatAlias() {
     if (alias) {
         window.localStorage.setItem("chatAlias", alias);
     }
+}
+
+function chatReplyLabel(value) {
+    const token = String(value || "").toUpperCase();
+    return CHAT_REPLY_LABELS[token] || value;
+}
+
+function chatReplyHint(value) {
+    const token = String(value || "").toUpperCase();
+    return CHAT_REPLY_HINTS[token] || `Send ${token}`;
 }
 
 async function submitChatMessage(rawMessage) {
@@ -1688,7 +1731,7 @@ async function submitChatMessage(rawMessage) {
     } catch (error) {
         state.chatMessages.push({
             role: "bot",
-            text: error.message || "Chat request failed. Try HELP."
+            text: error.message || "Chat request failed. Please try again or tap See options."
         });
         state.chatNextInputs = ["HELP", "BED"];
     } finally {

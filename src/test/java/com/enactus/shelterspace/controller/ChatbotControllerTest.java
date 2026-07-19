@@ -88,7 +88,7 @@ class ChatbotControllerTest {
                                 """.formatted(sessionId, alias)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("CHOOSING"))
-                .andExpect(jsonPath("$.messages[0]", containsString("Shelters with space")))
+                .andExpect(jsonPath("$.messages[0]", containsString("Here are shelters with space right now")))
                 .andExpect(jsonPath("$.nextInputs[0]").value("1-2"));
 
         mockMvc.perform(post("/api/chatbot/messages")
@@ -112,7 +112,7 @@ class ChatbotControllerTest {
                                 """.formatted(sessionId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("CONFIRM"))
-                .andExpect(jsonPath("$.messages[0]", containsString("YES or NO")));
+                .andExpect(jsonPath("$.messages[0]", containsString("Reply YES to send or NO to cancel")));
 
         mockMvc.perform(post("/api/chatbot/messages")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -125,7 +125,7 @@ class ChatbotControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("WAITING"))
                 .andExpect(jsonPath("$.bookingId").isNumber())
-                .andExpect(jsonPath("$.messages[0]", containsString("Requested. Code A")));
+                .andExpect(jsonPath("$.messages[0]", containsString("Request sent. Your code is A")));
 
         ShelterBooking createdBooking = shelterBookingRepository.findAll().stream()
                 .max(Comparator.comparing(ShelterBooking::getId))
@@ -151,7 +151,7 @@ class ChatbotControllerTest {
                                 """.formatted(sessionId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.messages[0]", containsString("Status: ADMITTED")))
-                .andExpect(jsonPath("$.messages[0]", containsString("Reply DIR for directions")));
+                .andExpect(jsonPath("$.messages[0]", containsString("Send DIR for address and phone details")));
     }
 
     private Shelter buildShelter(

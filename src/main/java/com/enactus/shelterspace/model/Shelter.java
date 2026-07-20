@@ -95,6 +95,9 @@ public class Shelter {
     @Column(nullable = false)
     private boolean legalNameRequired;
 
+    @Column(nullable = false)
+    private boolean supportsWaitlist = false;
+
     private LocalTime intakeStartTime;
 
     private LocalTime intakeCutoffTime;

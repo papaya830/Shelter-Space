@@ -84,6 +84,7 @@ const ENUM_OPTIONS = {
 const SHELTER_CACHE_KEY = "ss_shelters_v2";
 const FILTER_CACHE_KEY = "ss_filters_v1";
 const DEVICE_ID_KEY = "ss_device_id";
+const INTEREST_CACHE_PREFIX = "ss_interest_";
 const LATENCY_WARN_MS = 4000;
 
 const state = {
@@ -132,7 +133,10 @@ const state = {
     userLng: null,
     nearbyMode: false,
     locationLoading: false,
-    locationError: null
+    locationError: null,
+    demandSummary: [],
+    demandRecords: [],
+    loadingDemand: false
 };
 
 const elements = {
@@ -197,7 +201,7 @@ function parseRoute() {
     const parts = hash.split("/").filter(Boolean);
 
     if (parts[0] === "staff") {
-        const view = ["dashboard", "availability", "turnaways", "settings"].includes(parts[1]) ? parts[1] : "dashboard";
+        const view = ["dashboard", "availability", "turnaways", "settings", "demand"].includes(parts[1]) ? parts[1] : "dashboard";
         return { mode: "staff", view };
     }
 
@@ -216,6 +220,7 @@ async function ensureDataForRoute({ silent }) {
     const needsShelters = state.shelters.length === 0 || state.route.mode === "public" || state.route.view !== "settings";
     const needsBookings = state.route.mode === "staff";
     const needsTurnAwayLogs = state.route.mode === "staff" && state.route.view === "turnaways";
+    const needsDemand = state.route.mode === "staff" && (state.route.view === "dashboard" || state.route.view === "demand") && state.demandSummary.length === 0;
 
     const tasks = [];
     if (needsShelters) {
@@ -226,6 +231,9 @@ async function ensureDataForRoute({ silent }) {
     }
     if (needsTurnAwayLogs) {
         tasks.push(loadTurnAwayLogs({ silent }));
+    }
+    if (needsDemand) {
+        tasks.push(loadDemandSummary());
     }
     if (tasks.length) {
         await Promise.all(tasks);
@@ -263,6 +271,41 @@ function ensureDeviceId() {
         return id;
     } catch {
         return null;
+    }
+}
+
+async function recordGuestTypeInterest(populationType) {
+    const deviceId = ensureDeviceId();
+    if (!deviceId) return;
+
+    const cacheKey = INTEREST_CACHE_PREFIX + populationType;
+    if (localStorage.getItem(cacheKey)) return;
+
+    try {
+        await fetch("/api/analytics/interest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ deviceId, populationType })
+        });
+        localStorage.setItem(cacheKey, "1");
+    } catch {
+        // silent fail — analytics must never disrupt UX
+    }
+}
+
+async function loadDemandSummary() {
+    state.loadingDemand = true;
+    try {
+        const [summaryRes, recordsRes] = await Promise.all([
+            fetch("/api/analytics/interest/summary"),
+            fetch("/api/analytics/interest/records")
+        ]);
+        if (summaryRes.ok) state.demandSummary = await summaryRes.json();
+        if (recordsRes.ok) state.demandRecords = await recordsRes.json();
+    } catch {
+        // non-critical
+    } finally {
+        state.loadingDemand = false;
     }
 }
 
@@ -440,6 +483,9 @@ function bindViewEvents() {
                 if (state.route.view === "turnaways") {
                     tasks.push(loadTurnAwayLogs({ silent: false }));
                 }
+                if (state.route.view === "dashboard" || state.route.view === "demand") {
+                    tasks.push(loadDemandSummary());
+                }
                 await Promise.all(tasks);
             } else if (state.nearbyMode) {
                 await loadNearbyShelters({ silent: false });
@@ -527,8 +573,12 @@ function bindViewEvents() {
 
     document.querySelectorAll("[data-public-filter-select]").forEach((select) => {
         select.addEventListener("change", (event) => {
-            state[event.target.name] = event.target.value;
+            const { name, value } = event.target;
+            state[name] = value;
             writeFilterState();
+            if (name === "publicPopulationType" && value && value !== "ANY_GENDER") {
+                recordGuestTypeInterest(value);
+            }
             render();
         });
     });
@@ -831,6 +881,7 @@ function renderPublicShelterCard(shelter) {
                 ${shelter.acceptsLargeItems ? renderOutlineChip("Ground-floor beds") : ""}
                 ${shelter.petsAllowed ? renderOutlineChip("Service animals welcome") : ""}
                 ${shelter.callAheadRequired ? renderOutlineChip("Call ahead") : ""}
+                ${shelter.supportsWaitlist ? renderOutlineChip("Waitlist available") : ""}
             </div>
 
             <div class="list-card-footer">
@@ -929,6 +980,7 @@ function renderPublicShelterDetail() {
                     <p><strong>Address:</strong> ${escapeHtml(shelter.confidentialAddress ? "Address shared after screening or intake." : shelter.address)}</p>
                     <p><strong>Operational status:</strong> ${escapeHtml(formatLabel(shelter.operationalStatus))}</p>
                     <p><strong>Max stay:</strong> ${escapeHtml(shelter.maxStayDays ? `${shelter.maxStayDays} days` : "Not specified")}</p>
+                    <p><strong>Waitlist:</strong> ${shelter.supportsWaitlist ? "This shelter accepts a waitlist. Contact intake staff if beds are full." : "No formal waitlist at this shelter."}</p>
                     <p><strong>Notes:</strong> ${escapeHtml(shelter.notes || "No extra notes listed.")}</p>
                 </div>
             </article>
@@ -996,6 +1048,7 @@ function renderStaffApp() {
                             <a href="#/staff/dashboard" class="${state.route.view === "dashboard" ? "active" : ""}">Queue</a>
                             <a href="#/staff/availability" class="${state.route.view === "availability" ? "active" : ""}">Availability</a>
                             <a href="#/staff/turnaways" class="${state.route.view === "turnaways" ? "active" : ""}">Turn-aways</a>
+                            <a href="#/staff/demand" class="${state.route.view === "demand" ? "active" : ""}">Demand</a>
                             <a href="#/staff/settings" class="${state.route.view === "settings" ? "active" : ""}">Shelter settings</a>
                         </nav>
                     </div>
@@ -1012,7 +1065,7 @@ function renderStaffApp() {
             <main class="content staff-content">
                 <header class="topbar">
                     <div>
-                        <h2>${state.route.view === "dashboard" ? "Booking queue" : state.route.view === "availability" ? "Availability" : state.route.view === "turnaways" ? "Turn-away logs" : "Shelter settings"}</h2>
+                        <h2>${state.route.view === "dashboard" ? "Booking queue" : state.route.view === "availability" ? "Availability" : state.route.view === "turnaways" ? "Turn-away logs" : state.route.view === "demand" ? "Guest type demand" : "Shelter settings"}</h2>
                         <p class="helper-text">${escapeHtml(getSelectedStaffShelter()?.name || "Shelter-Space")} · ${APP_NOW.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</p>
                     </div>
                     <div class="topbar-actions">
@@ -1054,6 +1107,9 @@ function renderStaffContent() {
     if (state.route.view === "settings") {
         return renderStaffSettings();
     }
+    if (state.route.view === "demand") {
+        return renderStaffDemand();
+    }
     return renderStaffDashboard();
 }
 
@@ -1092,6 +1148,108 @@ function renderStaffDashboard() {
                         </tbody>
                     </table>
                 `}
+        </section>
+
+        ${renderDemandSummarySection()}
+    `;
+}
+
+function renderStaffDemand() {
+    const loading = state.loadingDemand;
+    const summary = state.demandSummary;
+    const records = state.demandRecords;
+
+    return `
+        <section class="section-header">
+            <div>
+                <p class="eyebrow">Public demand signal</p>
+                <h3>Guest type interest</h3>
+            </div>
+            <div class="topbar-actions">
+                <a class="button secondary" href="/api/analytics/interest/export.csv" download="guest-type-demand.csv">Download CSV</a>
+            </div>
+        </section>
+
+        <section class="stats-grid staff-kpi-grid">
+            ${summary.map((row) => renderKpiCard(
+                formatLabel(row.populationType),
+                String(row.uniqueDevices),
+                row.uniqueDevices === 1 ? "unique device" : "unique devices",
+                "neutral-accent"
+            )).join("")}
+        </section>
+
+        <section class="section-header">
+            <div>
+                <p class="eyebrow">Raw records</p>
+                <h3>All interest events</h3>
+            </div>
+            <div class="helper-text">One row per unique device + guest type combination. Device IDs are anonymised UUIDs.</div>
+        </section>
+
+        <section class="table-shell staff-table-shell">
+            ${loading
+                ? renderEmptyState("Loading records", "Fetching demand data.")
+                : records.length === 0
+                    ? renderEmptyState("No demand records yet", "Interest is recorded when public users filter by guest type.")
+                    : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Guest type</th>
+                                    <th>Device ID</th>
+                                    <th>Recorded at</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${records.map((r, i) => `
+                                    <tr>
+                                        <td>${i + 1}</td>
+                                        <td>${escapeHtml(formatLabel(r.populationType))}</td>
+                                        <td class="helper-text">${escapeHtml(r.deviceId)}</td>
+                                        <td>${escapeHtml(formatDateTime(r.recordedAt))}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    `}
+        </section>
+    `;
+}
+
+function renderDemandSummarySection() {
+    return `
+        <section class="section-header">
+            <div>
+                <p class="eyebrow">Public demand signal</p>
+                <h3>Guest type interest</h3>
+            </div>
+            <div class="helper-text">Unique devices that filtered by each guest type. Helps identify underserved populations.</div>
+        </section>
+        <section class="table-shell staff-table-shell">
+            ${state.loadingDemand
+                ? renderEmptyState("Loading demand data", "Fetching guest type interest summary.")
+                : state.demandSummary.length === 0
+                    ? renderEmptyState("No demand data yet", "Interest is recorded when public users filter by guest type.")
+                    : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Guest type</th>
+                                    <th>Unique devices</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${state.demandSummary.map((row) => `
+                                    <tr>
+                                        <td>${escapeHtml(formatLabel(row.populationType))}</td>
+                                        <td>${escapeHtml(String(row.uniqueDevices))}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    `}
         </section>
     `;
 }
@@ -1326,6 +1484,7 @@ function renderStaffShelterForm(shelter) {
                 ${renderToggleField("wheelchairAccessible", "Wheelchair accessible", form.wheelchairAccessible)}
                 ${renderToggleField("acceptsLargeItems", "Accepts large items", form.acceptsLargeItems)}
                 ${renderToggleField("legalNameRequired", "Legal name required", form.legalNameRequired)}
+                ${renderToggleField("supportsWaitlist", "Accepts waitlist", form.supportsWaitlist)}
             </div>
 
             <div class="panel form-summary">
@@ -1710,6 +1869,7 @@ function hydrateStaffShelterForm() {
             wheelchairAccessible: Boolean(shelter.wheelchairAccessible),
             acceptsLargeItems: Boolean(shelter.acceptsLargeItems),
             legalNameRequired: Boolean(shelter.legalNameRequired),
+            supportsWaitlist: Boolean(shelter.supportsWaitlist),
             intakeStartTime: shelter.intakeStartTime ?? "",
             intakeCutoffTime: shelter.intakeCutoffTime ?? "",
             maxStayDays: shelter.maxStayDays ?? "",

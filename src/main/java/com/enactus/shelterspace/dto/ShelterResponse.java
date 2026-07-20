@@ -44,7 +44,8 @@ public record ShelterResponse(
         LocalDateTime updatedAt,
         Double latitude,
         Double longitude,
-        Double distanceKm
+        Double distanceKm,
+        boolean supportsWaitlist
 ) {
 
     public static ShelterResponse fromEntity(Shelter shelter) {
@@ -83,7 +84,8 @@ public record ShelterResponse(
                 shelter.getUpdatedAt(),
                 shelter.getLatitude(),
                 shelter.getLongitude(),
-                null
+                null,
+                shelter.isSupportsWaitlist()
         );
     }
 
@@ -123,7 +125,8 @@ public record ShelterResponse(
                 shelter.getUpdatedAt(),
                 shelter.getLatitude(),
                 shelter.getLongitude(),
-                distanceKm
+                distanceKm,
+                shelter.isSupportsWaitlist()
         );
     }
 }

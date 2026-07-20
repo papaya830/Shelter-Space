@@ -40,7 +40,7 @@ public class SeedDataLoader {
                 return;
             }
 
-            Shelter gatewayHope = shelterRepository.save(buildShelter(
+            Shelter gatewayHope = buildShelter(
                     "Gateway Of Hope - Emergency Shelter", "Langley", "5787 Langley Bypass", "604-514-7375",
                     ShelterStatus.OPEN, BarrierLevel.LOW_BARRIER, PopulationType.ANY_GENDER, IntakeType.CALL_AHEAD,
                     42, 34, false, true, true, false, true, true,
@@ -51,9 +51,11 @@ public class SeedDataLoader {
                     "Pet friendly and wheelchair accessible.",
                     "Meals, showers, pet support",
                     49.0957, -122.6576
-            ));
+            );
+            gatewayHope.setSupportsWaitlist(true);
+            shelterRepository.save(gatewayHope);
 
-            Shelter catholicMens = shelterRepository.save(buildShelter(
+            Shelter catholicMens = buildShelter(
                     "Catholic Charities Men's Shelter", "Vancouver", "1056 Comox Street", "604-443-3292",
                     ShelterStatus.OPEN, BarrierLevel.HIGH_BARRIER, PopulationType.MEN_ONLY, IntakeType.CALL_AHEAD,
                     32, 32, false, false, false, false, true, false,
@@ -64,9 +66,11 @@ public class SeedDataLoader {
                     "Frequently full by evening.",
                     "Meals",
                     49.2858, -123.1289
-            ));
+            );
+            catholicMens.setSupportsWaitlist(true);
+            shelterRepository.save(catholicMens);
 
-            Shelter northShore = shelterRepository.save(buildShelter(
+            Shelter northShore = buildShelter(
                     "North Shore Housing Centre Shelter", "North Vancouver", "705 2nd Street West", "604-982-9126 Ext 0",
                     ShelterStatus.OPEN, BarrierLevel.LOW_BARRIER, PopulationType.ANY_GENDER, IntakeType.CALL_AHEAD,
                     28, 27, false, false, false, false, true, false,
@@ -77,9 +81,11 @@ public class SeedDataLoader {
                     "Often keeps one or two spaces open for urgent placements.",
                     "Showers",
                     49.3195, -123.0724
-            ));
+            );
+            northShore.setSupportsWaitlist(true);
+            shelterRepository.save(northShore);
 
-            Shelter stevensonHouse = shelterRepository.save(buildShelter(
+            Shelter stevensonHouse = buildShelter(
                     "Stevenson House For Men", "New Westminster", "32 Elliot Street", "604-526-4783",
                     ShelterStatus.OPEN, BarrierLevel.HIGH_BARRIER, PopulationType.MEN_ONLY, IntakeType.CALL_AHEAD,
                     20, 20, false, false, false, false, true, false,
@@ -90,9 +96,11 @@ public class SeedDataLoader {
                     "Matches the live note from the source list.",
                     "Laundry",
                     49.2058, -122.9120
-            ));
+            );
+            stevensonHouse.setSupportsWaitlist(true);
+            shelterRepository.save(stevensonHouse);
 
-            Shelter rockBay = shelterRepository.save(buildShelter(
+            Shelter rockBay = buildShelter(
                     "Rock Bay Landing Emergency Shelter", "Victoria", "535 Ellice Street", "250-383-1951 Ext 1",
                     ShelterStatus.OPEN, BarrierLevel.LOW_BARRIER, PopulationType.ANY_GENDER, IntakeType.FIRST_COME_FIRST_SERVED,
                     50, 49, false, true, true, true, true, false,
@@ -103,7 +111,9 @@ public class SeedDataLoader {
                     "Pet friendly and takes large items.",
                     "Storage, pet support, meals",
                     48.4284, -123.3656
-            ));
+            );
+            rockBay.setSupportsWaitlist(true);
+            shelterRepository.save(rockBay);
 
             Shelter springhouse = shelterRepository.save(buildShelter(
                     "Springhouse", "Vancouver", "Address confidential", "604-606-0412",
@@ -131,7 +141,7 @@ public class SeedDataLoader {
                     49.0490, -122.3081
             ));
 
-            Shelter rosewood = shelterRepository.save(buildShelter(
+            Shelter rosewood = buildShelter(
                     "Rosewood Shelter - E. Fry Society", "Surrey", "Address confidential", "604-589-5337",
                     ShelterStatus.OPEN, BarrierLevel.HIGH_BARRIER, PopulationType.WOMEN_WITH_CHILDREN, IntakeType.REFERRAL,
                     16, 14, true, false, false, false, true, false,
@@ -142,7 +152,9 @@ public class SeedDataLoader {
                     "Confidential location.",
                     "Family rooms",
                     49.1913, -122.8490
-            ));
+            );
+            rosewood.setSupportsWaitlist(true);
+            shelterRepository.save(rosewood);
 
             Shelter theHaven = shelterRepository.save(buildShelter(
                     "The Haven", "Vancouver", "108 East Hastings Street", "604-646-6806",

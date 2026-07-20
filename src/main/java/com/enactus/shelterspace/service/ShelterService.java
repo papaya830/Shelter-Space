@@ -97,6 +97,7 @@ public class ShelterService {
         shelter.setWheelchairAccessible(request.isWheelchairAccessible());
         shelter.setAcceptsLargeItems(request.isAcceptsLargeItems());
         shelter.setLegalNameRequired(request.isLegalNameRequired());
+        shelter.setSupportsWaitlist(request.isSupportsWaitlist());
         shelter.setIntakeStartTime(request.getIntakeStartTime());
         shelter.setIntakeCutoffTime(request.getIntakeCutoffTime());
         shelter.setMaxStayDays(request.getMaxStayDays());

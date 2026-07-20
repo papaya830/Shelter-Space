@@ -61,6 +61,7 @@ public class ShelterRequest {
     private boolean wheelchairAccessible;
     private boolean acceptsLargeItems;
     private boolean legalNameRequired;
+    private boolean supportsWaitlist;
 
     private LocalTime intakeStartTime;
     private LocalTime intakeCutoffTime;

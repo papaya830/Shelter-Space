@@ -120,6 +120,7 @@ const state = {
     staffTurnAwayErrors: {},
     flash: null,
     connection: { tone: "neutral", label: "Ready" },
+    mobileMenuOpen: false,
     dialogAction: null,
     dialogBookingId: null,
     chatClientSessionId: null,
@@ -475,6 +476,21 @@ function queueChatAutoScroll() {
 }
 
 function bindViewEvents() {
+    const hamburgerButton = document.querySelector("[data-action='nav-hamburger']");
+    if (hamburgerButton) {
+        hamburgerButton.addEventListener("click", () => {
+            state.mobileMenuOpen = !state.mobileMenuOpen;
+            render();
+        });
+    }
+
+    const mobileNavLinks = document.querySelectorAll(".mobile-nav-drawer a");
+    mobileNavLinks.forEach((link) => {
+        link.addEventListener("click", () => {
+            state.mobileMenuOpen = false;
+        });
+    });
+
     const refreshButton = document.querySelector("[data-action='refresh']");
     if (refreshButton) {
         refreshButton.addEventListener("click", async () => {
@@ -1059,7 +1075,24 @@ function renderStaffApp() {
                         </div>
                         <div class="staff-avatar">MA</div>
                     </div>
+                    <button class="nav-hamburger" data-action="nav-hamburger" aria-label="${state.mobileMenuOpen ? "Close menu" : "Open menu"}">
+                        ${state.mobileMenuOpen ? "✕" : "☰"}
+                    </button>
                 </div>
+                <nav class="mobile-nav-drawer${state.mobileMenuOpen ? " open" : ""}">
+                    <a href="#/staff/dashboard" class="${state.route.view === "dashboard" ? "active" : ""}">Queue</a>
+                    <a href="#/staff/availability" class="${state.route.view === "availability" ? "active" : ""}">Availability</a>
+                    <a href="#/staff/turnaways" class="${state.route.view === "turnaways" ? "active" : ""}">Turn-aways</a>
+                    <a href="#/staff/demand" class="${state.route.view === "demand" ? "active" : ""}">Demand</a>
+                    <a href="#/staff/settings" class="${state.route.view === "settings" ? "active" : ""}">Shelter settings</a>
+                    <div class="mobile-nav-profile">
+                        <div class="staff-avatar">MA</div>
+                        <div>
+                            <strong>${escapeHtml(getSelectedStaffShelter()?.name || "Shelter-Space")}</strong>
+                            <span>Night intake · M. Alvarez</span>
+                        </div>
+                    </div>
+                </nav>
             </header>
 
             <main class="content staff-content">
@@ -1331,7 +1364,7 @@ function renderStaffTurnAways() {
                     ${renderInputField("recordedBy", "Recorded by", form.recordedBy, true, state.staffTurnAwayErrors.recordedBy)}
                     ${renderTextAreaField("notes", "Notes", form.notes, state.staffTurnAwayErrors.notes)}
 
-                    <div class="panel form-summary">
+                    <div class="form-summary">
                         ${state.staffTurnAwayErrors.message ? `<div class="form-error">${escapeHtml(state.staffTurnAwayErrors.message)}</div>` : ""}
                         <div class="card-actions">
                             <button class="button" type="submit">Save turn-away log</button>
@@ -1487,7 +1520,7 @@ function renderStaffShelterForm(shelter) {
                 ${renderToggleField("supportsWaitlist", "Accepts waitlist", form.supportsWaitlist)}
             </div>
 
-            <div class="panel form-summary">
+            <div class="form-summary">
                 ${state.staffShelterErrors.message ? `<div class="form-error">${escapeHtml(state.staffShelterErrors.message)}</div>` : ""}
                 <div class="card-actions">
                     <button class="button" type="submit">Save shelter</button>

@@ -20,7 +20,9 @@ The current build includes:
 - minimal guest profile data
 - booking request and admission lifecycle logic with REST endpoints
 - staff turn-away logging with structured reasons and recent history
-- local seed data for development and testing
+- optional local Ollama assistant with deterministic booking actions
+- public booking and full-shelter waitlist registration
+- expanded local seed data and repeatable population/smoke-test scripts
 - bundled public shelter UI at `/`
 - bundled staff console at `/#/staff/dashboard`
 
@@ -57,14 +59,24 @@ Included MVP screens:
    - submits a minimal request to the live backend using a public booking endpoint
    - collects alias/display name plus optional legal name, phone number, birth date, helper name, and intake notes
    - uses backend validation responses for clear error handling
+   - prevents registration when a shelter is full or temporarily closed
+   - offers `Join the waitlist` when a full operational shelter supports waitlisting
 
 Public booking flow:
 
 1. open the public shelter list
 2. choose a shelter and review the detail screen
-3. open `Request a bed`
+3. choose `Request a bed`, or `Join the waitlist` when the shelter is full and supports it
 4. submit the minimal guest profile and requested bed date
-5. the request is created in the existing booking queue for staff review
+5. the request appears in the staff queue as `REQUESTED` or `WAITLISTED`
+
+Availability rules:
+
+- available operational shelter: public registration is enabled
+- full shelter with waitlist support: registration is disabled and waitlist registration is enabled
+- full shelter without waitlist support: both actions are unavailable
+- temporarily closed shelter: registration and waitlisting are unavailable even if its capacity fields show unused beds
+- a waitlisted guest cannot be admitted while the shelter remains full; a check-out must release capacity first
 
 ## Staff Frontend
 
@@ -110,6 +122,34 @@ The app starts on:
 ./gradlew test
 ```
 
+### Populate Turn-aways and Demand
+
+With the application running locally, populate the reporting screens with demo activity:
+
+```bash
+./scripts/seed-turnaways-demand.sh
+```
+
+By default this adds 24 turn-away events linked across the seeded guest profiles and submits 6 anonymized demand signals for each guest type. Override those amounts when needed:
+
+```bash
+TURNAWAY_COUNT=50 DEMAND_PER_TYPE=10 ./scripts/seed-turnaways-demand.sh
+```
+
+An alternate application URL can be passed as the first argument. Demand device/type pairs are stable and remain unique on repeat runs; turn-away events are intentionally additive.
+
+### Optional local Ollama chatbot
+
+The chatbot keeps its deterministic keyword workflow for booking actions and can use a local Ollama model for open-ended shelter questions. Ollama is optional; if it is disabled or unavailable, `BED`, `STATUS`, `CANCEL`, `DIR`, and `HELP` continue to work.
+
+```bash
+ollama pull llama3.2:3b
+ollama serve
+./gradlew bootRun --args='--app.chatbot.ollama.enabled=true'
+```
+
+To use another local model or Ollama host, set `app.chatbot.ollama.model` or `app.chatbot.ollama.base-url` in `application.properties`, or pass the corresponding `--key=value` argument to `bootRun`. The model response timeout defaults to 20 seconds and is configurable with `app.chatbot.ollama.timeout-seconds`.
+
 ## How The Frontend Talks To The Backend
 
 - the frontend is shipped from `src/main/resources/static`
@@ -121,6 +161,7 @@ Main API integrations:
 
 - `GET /api/bookings`
 - `POST /api/bookings/public`
+- `POST /api/bookings/public/waitlist`
 - `POST /api/bookings/{id}/waitlist`
 - `POST /api/bookings/{id}/admit`
 - `POST /api/bookings/{id}/reject`
@@ -146,6 +187,7 @@ Important local behavior:
 
 - schema is recreated on startup via `spring.jpa.hibernate.ddl-auto=create-drop`
 - seed data loads automatically when `app.seed.enabled=true`
+- the default demo dataset includes 12 shelters, 17 guest profiles, 17 bookings covering every lifecycle status, and 7 guest-linked turn-away records
 
 The frontend is intended to work against this seeded local dataset for demos and manual review.
 
@@ -225,6 +267,34 @@ Base path:
 
 Creates a booking request.
 
+Required request fields:
+
+- `shelterId`
+- `guestId`
+- `requestedBedDate`
+- `requestChannel`
+
+Behavior:
+
+- validates input
+- returns `201 Created`
+- returns a `Location` header
+- blocks duplicate active booking lifecycles for the same guest
+
+### `POST /api/bookings/public`
+
+Creates a guest profile and a public `REQUESTED` booking in one operation.
+
+- requires an operational shelter with an available bed
+- returns `409 Conflict` when the shelter is full or temporarily closed
+
+### `POST /api/bookings/public/waitlist`
+
+Creates a guest profile and a public `WAITLISTED` booking in one operation.
+
+- requires the shelter to be operational, full, and configured with `supportsWaitlist=true`
+- rejects waitlisting when beds are available, waitlisting is disabled, or the shelter is closed
+
 ### `POST /api/bookings/{id}/waitlist`
 
 Moves a requested booking into `WAITLISTED`.
@@ -239,7 +309,7 @@ Waitlist notes:
 
 - waitlisted requests stay visible in the staff queue
 - staff can still admit or reject a waitlisted booking later
-- public booking requests still begin in `REQUESTED`; waitlisting is a staff workflow
+- admitting a waitlisted request still requires live shelter capacity
 
 ## Turn-Away API
 
@@ -285,27 +355,6 @@ Behavior:
 - returns `201 Created` with `Location` header
 - validates required fields and enum values
 - returns `404 Not Found` when the shelter or optional guest does not exist
-
-## MVP Notes And Limitations
-
-- public shelter filters currently run in the bundled SPA against live shelter data already loaded from the API
-- `open now` is derived from `open24Hours`, shelter operational status, and intake start/cutoff times when those times are present
-- turn-away logs are intentionally simple operational records and do not yet include referrals, attachments, or full reporting dashboards
-- waitlist ordering and prioritization are intentionally out of scope for the current MVP
-
-Required request fields:
-
-- `shelterId`
-- `guestId`
-- `requestedBedDate`
-- `requestChannel`
-
-Behavior:
-
-- validates input
-- returns `201 Created`
-- returns `Location` header for the created booking
-- blocks duplicate active booking lifecycles for the same guest
 
 ### `GET /api/bookings`
 
@@ -375,11 +424,12 @@ Primary lifecycle states:
 
 Supported workflow:
 
-1. Create booking with `POST /api/bookings`
+1. Create a staff booking, public request, or public waitlist entry
 2. Review with `GET /api/bookings`
-3. Admit or reject with `/admit` or `/reject`
-4. Check in with `/check-in`
-5. Check out with `/check-out`
+3. Waitlist, admit, reject, or cancel while the request is pending
+4. Admit only when the shelter has capacity
+5. Check in with `/check-in`
+6. Check out with `/check-out`, which releases shelter capacity
 
 Example create request:
 
@@ -389,12 +439,21 @@ curl -X POST http://localhost:8080/api/bookings \
   -d '{
     "shelterId": 1,
     "guestId": 3,
-    "requestedBedDate": "2026-07-18",
+    "requestedBedDate": "2026-07-22",
     "requestChannel": "PHONE",
     "requestedBy": "Front Desk",
     "intakeNotes": "Needs lower bunk if available"
   }'
 ```
+
+## MVP Notes And Limitations
+
+- public shelter filters run in the bundled SPA against live shelter data already loaded from the API
+- `open now` is derived from the current browser time, operational status, `open24Hours`, and configured intake start/cutoff times
+- turn-away logs are intentionally simple operational records and do not yet include referrals or attachments
+- guest association on turn-away records remains optional for legitimate anonymous encounters; all bundled demo records are guest-linked
+- waitlist ordering and prioritization are intentionally out of scope for the current MVP
+- admitting requested or waitlisted guests above shelter capacity is intentionally blocked
 
 ## Error Response Shape
 
@@ -421,11 +480,13 @@ The local seed data is meant for product development and demos, not production a
 It includes:
 
 - 12 shelters
+- 17 guest profiles
+- 17 bookings covering `REQUESTED`, `WAITLISTED`, `ADMITTED`, `CHECKED_IN`, `CHECKED_OUT`, `REJECTED`, and `CANCELLED`
+- 7 guest-linked turn-away records
 - mixed barrier levels and population types
 - open, full, near-full, and closed shelters
 - a range of intake styles
-- sample guests, bookings, and turn-away records
-- bookings in multiple statuses for booking workflow testing
+- varied contact, accessibility, family, youth, referral, and intake notes
 
 ## Testing Notes
 
@@ -434,11 +495,22 @@ Automated coverage currently includes:
 - backend controller and service tests for shelter and booking APIs
 - controller coverage for public booking request creation and validation
 - a frontend smoke test confirming `/` is wired as the Spring Boot welcome page
+- public full/closed shelter registration and waitlist rules
+- chatbot natural-language routing and deterministic shelter fact lookup
+
+End-to-end lifecycle verification against a running app:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+This checks public registration, public and staff waitlisting, admission, check-in, check-out, rejection, cancellation, queue reload, turn-away logging, demand analytics, and chatbot responses.
 
 Manual verification completed during implementation:
 
 - public and staff frontend assets are bundled into Spring Boot static resources
 - the app starts successfully with the shared frontend registered as the welcome page
+- public filters, request forms, staff navigation, booking controls, Turn-away form, Shelter Settings form, and modal cleanup work in the rendered application without console errors
 
 Current limitation:
 

@@ -170,6 +170,91 @@ class BookingControllerTest {
     }
 
     @Test
+    void publicBookingCannotRegisterAtFullShelter() throws Exception {
+        String requestedBedDate = LocalDate.now().plusDays(1).toString();
+
+        mockMvc.perform(post("/api/bookings/public")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "shelterId": %d,
+                                  "displayName": "Taylor",
+                                  "requestedBedDate": "%s"
+                                }
+                                """.formatted(fullShelter.getId(), requestedBedDate)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Shelter is full and is not accepting a waitlist."));
+    }
+
+    @Test
+    void publicCanJoinWaitlistWhenFullShelterSupportsIt() throws Exception {
+        fullShelter.setSupportsWaitlist(true);
+        fullShelter = shelterRepository.save(fullShelter);
+        String requestedBedDate = LocalDate.now().plusDays(1).toString();
+
+        mockMvc.perform(post("/api/bookings/public/waitlist")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "shelterId": %d,
+                                  "displayName": "Taylor",
+                                  "requestedBedDate": "%s"
+                                }
+                                """.formatted(fullShelter.getId(), requestedBedDate)))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", containsString("/api/bookings/")))
+                .andExpect(jsonPath("$.status").value("WAITLISTED"))
+                .andExpect(jsonPath("$.requestChannel").value("APP"))
+                .andExpect(jsonPath("$.guest.displayName").value("Taylor"))
+                .andExpect(jsonPath("$.shelter.id").value(fullShelter.getId()));
+    }
+
+    @Test
+    void publicCannotWaitlistWhenBedsAreAvailable() throws Exception {
+        availableShelter.setSupportsWaitlist(true);
+        availableShelter = shelterRepository.save(availableShelter);
+        String requestedBedDate = LocalDate.now().plusDays(1).toString();
+
+        mockMvc.perform(post("/api/bookings/public/waitlist")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "shelterId": %d,
+                                  "displayName": "Taylor",
+                                  "requestedBedDate": "%s"
+                                }
+                                """.formatted(availableShelter.getId(), requestedBedDate)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Shelter has beds available. Send a booking request instead."));
+    }
+
+    @Test
+    void publicCannotRegisterOrWaitlistAtClosedShelter() throws Exception {
+        availableShelter.setOperationalStatus(ShelterStatus.TEMPORARILY_CLOSED);
+        availableShelter.setSupportsWaitlist(true);
+        availableShelter = shelterRepository.save(availableShelter);
+        String payload = """
+                {
+                  "shelterId": %d,
+                  "displayName": "Taylor",
+                  "requestedBedDate": "%s"
+                }
+                """.formatted(availableShelter.getId(), LocalDate.now().plusDays(1));
+
+        mockMvc.perform(post("/api/bookings/public")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Cannot register at a temporarily closed shelter."));
+
+        mockMvc.perform(post("/api/bookings/public/waitlist")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Cannot join the waitlist for a temporarily closed shelter."));
+    }
+
+    @Test
     void listBookingsReturnsStaffReviewData() throws Exception {
         mockMvc.perform(get("/api/bookings"))
                 .andExpect(status().isOk())

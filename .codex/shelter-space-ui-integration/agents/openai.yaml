@@ -1,0 +1,17 @@
+interface:
+  display_name: shelter space ui integration
+  short_description: Integrate, redesign, or polish the Shelter-Space HTML/CSS frontend
+    to match the supplied civic shelter-directory reference screens. Use for requests
+    such as “match the Lovable design,” “improve the Shelter-Space UI,” “build the
+    public directory,” “polish the staff dashboard,” “make this responsive,” or “apply
+    the Shelter-Space design system.” Do not use for backend-only, database-only,
+    or infrastructure-only work.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

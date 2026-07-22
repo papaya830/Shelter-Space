@@ -36,7 +36,7 @@ const CHAT_REPLY_HINTS = {
     MORE: "See the next list of shelter options."
 };
 
-const APP_NOW = new Date("2026-07-18T12:00:00-07:00");
+const APP_NOW = new Date();
 
 const STAFF_FILTERS = [
     { key: "all", label: "All bookings" },
@@ -107,6 +107,8 @@ const state = {
     publicPetsOnly: false,
     publicBarrierLevel: "",
     publicPopulationType: "",
+    publicSelectedShelterId: null,
+    publicShelterDialogView: "details",
     publicRequestForm: buildEmptyPublicRequestForm(),
     publicRequestErrors: {},
     publicRequestSuccess: null,
@@ -142,6 +144,8 @@ const state = {
 
 const elements = {
     root: document.querySelector("#root"),
+    publicShelterDialog: document.querySelector("#public-shelter-dialog"),
+    publicShelterDialogContent: document.querySelector("#public-shelter-dialog-content"),
     dialog: document.querySelector("#booking-action-dialog"),
     dialogForm: document.querySelector("#booking-action-form"),
     dialogTitle: document.querySelector("#dialog-title"),
@@ -170,12 +174,14 @@ async function init() {
 
 function bindGlobalEvents() {
     window.addEventListener("hashchange", async () => {
+        closePublicShelterDialog();
         state.route = parseRoute();
         if (state.route.mode === "public" && state.route.view === "request") {
             hydratePublicRequestForm();
         }
         await ensureDataForRoute({ silent: true });
         render();
+        window.scrollTo({ top: 0, left: 0 });
     });
 
     window.addEventListener("online", () => {
@@ -191,6 +197,46 @@ function bindGlobalEvents() {
 
     document.querySelector("#dialog-close").addEventListener("click", closeDialog);
     document.querySelector("#dialog-cancel").addEventListener("click", closeDialog);
+    document.querySelector("#public-shelter-dialog-close").addEventListener("click", closePublicShelterDialog);
+    elements.publicShelterDialog.addEventListener("click", (event) => {
+        if (event.target === elements.publicShelterDialog) {
+            closePublicShelterDialog();
+        }
+    });
+    elements.publicShelterDialog.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closePublicShelterDialog();
+        }
+    });
+    elements.publicShelterDialog.addEventListener("close", () => {
+        state.publicSelectedShelterId = null;
+        state.publicShelterDialogView = "details";
+        elements.publicShelterDialogContent.innerHTML = "";
+    });
+    elements.publicShelterDialogContent.addEventListener("click", (event) => {
+        if (event.target.closest("[data-public-request-open]")) {
+            openPublicRequestDialog();
+        } else if (event.target.closest("[data-public-request-back]")) {
+            openPublicShelterDetailsDialog();
+        }
+    });
+    elements.publicShelterDialogContent.addEventListener("input", (event) => {
+        if (event.target.closest("#public-booking-form")) {
+            handlePublicRequestInput(event);
+        }
+    });
+    elements.publicShelterDialogContent.addEventListener("change", (event) => {
+        if (event.target.closest("#public-booking-form")) {
+            handlePublicRequestInput(event);
+        }
+    });
+    elements.publicShelterDialogContent.addEventListener("submit", async (event) => {
+        if (event.target.matches("#public-booking-form")) {
+            event.preventDefault();
+            await submitPublicBooking();
+        }
+    });
     elements.dialogForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         await submitStaffBookingAction();
@@ -560,12 +606,20 @@ function bindViewEvents() {
     if (publicSearch) {
         publicSearch.addEventListener("input", (event) => {
             state.publicSearch = event.target.value;
+            const caret = event.target.selectionStart;
             render();
+            const nextSearch = document.querySelector("#public-search");
+            nextSearch?.focus();
+            if (nextSearch && caret != null) {
+                nextSearch.setSelectionRange(caret, caret);
+            }
         });
     }
 
     document.querySelectorAll("[data-public-clear]").forEach((button) => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
+            const wasNearby = state.nearbyMode;
+            state.publicSearch = "";
             state.publicAvailableOnly = false;
             state.publicOpenNowOnly = false;
             state.publicCallAheadOnly = false;
@@ -573,7 +627,14 @@ function bindViewEvents() {
             state.publicPetsOnly = false;
             state.publicBarrierLevel = "";
             state.publicPopulationType = "";
+            state.nearbyMode = false;
+            state.userLat = null;
+            state.userLng = null;
+            state.locationError = null;
             writeFilterState();
+            if (wasNearby) {
+                await loadShelters({ silent: true });
+            }
             render();
         });
     });
@@ -599,6 +660,12 @@ function bindViewEvents() {
         });
     });
 
+    document.querySelectorAll("[data-public-shelter-detail]").forEach((button) => {
+        button.addEventListener("click", () => {
+            openPublicShelterDialog(Number(button.dataset.publicShelterDetail));
+        });
+    });
+
     document.querySelectorAll("[data-staff-filter]").forEach((button) => {
         button.addEventListener("click", () => {
             state.staffBookingFilter = button.dataset.staffFilter;
@@ -607,8 +674,21 @@ function bindViewEvents() {
     });
 
     document.querySelectorAll("[data-staff-booking]").forEach((row) => {
-        row.addEventListener("click", () => {
-            state.staffSelectedBookingId = Number(row.dataset.staffBooking);
+        row.addEventListener("click", (event) => {
+            if (event.target.closest("[data-staff-action]")) {
+                return;
+            }
+            const bookingId = Number(row.dataset.staffBooking);
+            state.staffSelectedBookingId = state.staffSelectedBookingId === bookingId ? null : bookingId;
+            render();
+        });
+        row.addEventListener("keydown", (event) => {
+            if (event.target !== row || !["Enter", " "].includes(event.key)) {
+                return;
+            }
+            event.preventDefault();
+            const bookingId = Number(row.dataset.staffBooking);
+            state.staffSelectedBookingId = state.staffSelectedBookingId === bookingId ? null : bookingId;
             render();
         });
     });
@@ -619,7 +699,7 @@ function bindViewEvents() {
         });
     });
 
-    const publicForm = document.querySelector("#public-booking-form");
+    const publicForm = elements.root.querySelector("#public-booking-form");
     if (publicForm) {
         publicForm.addEventListener("input", handlePublicRequestInput);
         publicForm.addEventListener("change", handlePublicRequestInput);
@@ -817,15 +897,33 @@ function renderPublicChatWidget() {
 
 function renderPublicShelterList() {
     const shelters = getFilteredPublicShelters();
+    const hasFilters = hasActivePublicFilters();
 
     return `
-        <section class="public-tools panel">
+        <section class="public-tools panel" aria-label="Shelter search and filters">
             <div class="public-filter-stack">
                 <div class="public-search-row">
                     <label class="field public-search-field">
                         <span class="sr-only">Search by shelter name or neighborhood</span>
+                        <svg class="public-search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <circle cx="11" cy="11" r="6.5"></circle>
+                            <path d="m16 16 4 4"></path>
+                        </svg>
                         <input id="public-search" value="${escapeHtml(state.publicSearch)}" placeholder="Search by name or neighborhood">
                     </label>
+                    <div class="public-dropdown-row">
+                        ${renderFilterSelect("publicPopulationType", "Any guest type", state.publicPopulationType, ENUM_OPTIONS.populationType)}
+                        ${renderFilterSelect("publicBarrierLevel", "Any requirements", state.publicBarrierLevel, ENUM_OPTIONS.barrierLevel, "Any barrier level")}
+                        <button class="button secondary inline public-refresh" data-action="refresh">Refresh</button>
+                    </div>
+                </div>
+                <div class="toggle-row public-filter-row">
+                    ${renderPublicFilterChip("allFake", hasFilters ? "Clear all" : "All", !hasFilters)}
+                    ${renderPublicFilterChip("publicAvailableOnly", "Has space", state.publicAvailableOnly)}
+                    ${renderPublicFilterChip("publicOpenNowOnly", "Open now", state.publicOpenNowOnly)}
+                    ${renderPublicFilterChip("publicCallAheadOnly", "Call ahead", state.publicCallAheadOnly)}
+                    ${renderPublicFilterChip("publicWheelchairOnly", "Wheelchair accessible", state.publicWheelchairOnly)}
+                    ${renderPublicFilterChip("publicPetsOnly", "Pets allowed", state.publicPetsOnly)}
                     <div class="public-location-actions">
                         ${state.nearbyMode
                             ? `<span class="location-active-label">Near you</span>
@@ -835,23 +933,12 @@ function renderPublicShelterList() {
                                </button>`}
                     </div>
                 </div>
-                <div class="public-dropdown-row">
-                    ${renderFilterSelect("publicBarrierLevel", "Any barrier level", state.publicBarrierLevel, ENUM_OPTIONS.barrierLevel)}
-                    ${renderFilterSelect("publicPopulationType", "Any guest type", state.publicPopulationType, ENUM_OPTIONS.populationType)}
-                    <button class="button secondary inline public-refresh" data-action="refresh">Refresh</button>
-                </div>
-                <div class="toggle-row public-filter-row">
-                    ${renderPublicFilterChip("allFake", "All", !state.publicAvailableOnly && !state.publicOpenNowOnly && !state.publicCallAheadOnly && !state.publicWheelchairOnly && !state.publicPetsOnly && !state.publicBarrierLevel && !state.publicPopulationType)}
-                    ${renderPublicFilterChip("publicAvailableOnly", "Has space", state.publicAvailableOnly)}
-                    ${renderPublicFilterChip("publicOpenNowOnly", "Open now", state.publicOpenNowOnly)}
-                    ${renderPublicFilterChip("publicCallAheadOnly", "Call ahead", state.publicCallAheadOnly)}
-                    ${renderPublicFilterChip("publicWheelchairOnly", "Wheelchair accessible", state.publicWheelchairOnly)}
-                    ${renderPublicFilterChip("publicPetsOnly", "Pets allowed", state.publicPetsOnly)}
-                </div>
             </div>
         </section>
 
         ${state.locationError ? `<p class="helper-text error-text location-error">${escapeHtml(state.locationError)}</p>` : ""}
+
+        <p class="public-result-count" role="status">Showing ${shelters.length} of ${state.shelters.length} shelters${hasFilters ? " matching your filters" : ""}.</p>
 
         <section class="public-card-grid">
             ${shelters.length === 0
@@ -863,8 +950,10 @@ function renderPublicShelterList() {
 
 function renderPublicShelterCard(shelter) {
     const availability = getAvailabilityLabel(shelter);
+    const isFull = shelter.availableBeds <= 0;
+    const isClosed = shelter.operationalStatus === "TEMPORARILY_CLOSED";
     return `
-        <article class="shelter-card panel">
+        <article class="shelter-card panel ${isFull || isClosed ? "is-full" : ""}">
             <div class="card-top shelter-list-top">
                 <div class="shelter-title-block">
                     <h3>${escapeHtml(shelter.name)}</h3>
@@ -901,8 +990,10 @@ function renderPublicShelterCard(shelter) {
             </div>
 
             <div class="list-card-footer">
-                <span class="helper-text">⌚ Updated just now</span>
-                <a class="details-link" href="#/shelters/${shelter.id}">View details →</a>
+                <span class="helper-text">${isClosed ? "Temporarily closed · Registration unavailable" : isFull ? (shelter.supportsWaitlist ? "Full · Waitlist available" : "Full · Registration unavailable") : "⌚ Updated just now"}</span>
+                <button class="details-link" type="button" data-public-shelter-detail="${shelter.id}" aria-label="View details for ${escapeHtml(shelter.name)}">
+                    <span aria-hidden="true">View details →</span>
+                </button>
             </div>
         </article>
     `;
@@ -914,16 +1005,23 @@ function renderPublicShelterDetail() {
         return renderEmptyState("Shelter not found", "The shelter you selected is not available in the current list.");
     }
 
+    return renderPublicShelterDetailContent(shelter);
+}
+
+function renderPublicShelterDetailContent(shelter, { modal = false } = {}) {
     const availability = getAvailabilityLabel(shelter);
+    const isFull = shelter.availableBeds <= 0;
+    const isClosed = shelter.operationalStatus === "TEMPORARILY_CLOSED";
+    const canWaitlist = !isClosed && isFull && shelter.supportsWaitlist;
     return `
-        <section class="detail-layout aligned-detail">
-            <a class="back-link" href="#/shelters">← All shelters</a>
+        <section class="detail-layout aligned-detail ${modal ? "modal-detail-layout" : ""}">
+            ${modal ? "" : `<a class="back-link" href="#/shelters">← All shelters</a>`}
 
             <article class="panel detail-hero detail-primary-card">
                 <div class="detail-head detail-hero-top">
                     <div>
                         <p class="eyebrow">${escapeHtml(shelter.city)}</p>
-                        <h2>${escapeHtml(shelter.name)}</h2>
+                        <h2${modal ? ` id="public-shelter-dialog-title" tabindex="-1"` : ""}>${escapeHtml(shelter.name)}</h2>
                         <p class="detail-description">${escapeHtml(shelter.notes || shelter.intakeInstructions || "Review the intake information below before heading to this shelter.")}</p>
                     </div>
                     ${renderAvailabilityPill(shelter, availability)}
@@ -962,9 +1060,19 @@ function renderPublicShelterDetail() {
 
                 <div class="detail-cta-row">
                     <a class="button secondary phone-button" href="${shelter.phoneNumber ? `tel:${escapeHtml(shelter.phoneNumber)}` : "#"}">${escapeHtml(shelter.phoneNumber || "Phone not listed")}</a>
-                    <a class="button detail-request-button" href="#/shelters/${shelter.id}/request">Request a bed for tonight</a>
+                    ${(isFull || isClosed) && !canWaitlist
+                        ? `<button class="button detail-request-button" type="button" disabled>${isClosed ? "Temporarily closed" : "Full — registration unavailable"}</button>`
+                        : modal
+                            ? `<button class="button detail-request-button" type="button" data-public-request-open>${canWaitlist ? "Join the waitlist" : "Request a bed for tonight"}</button>`
+                            : `<a class="button detail-request-button" href="#/shelters/${shelter.id}/request">${canWaitlist ? "Join the waitlist" : "Request a bed for tonight"}</a>`}
                 </div>
-                <p class="helper-text detail-footnote">Requesting a bed is free. Your info is only shared with this shelter's intake team.</p>
+                <p class="helper-text detail-footnote">${isClosed
+                    ? "This shelter is temporarily closed. Registration and waitlisting are unavailable."
+                    : isFull
+                    ? canWaitlist
+                        ? "This shelter is full. You cannot register for a bed now, but you can join its waitlist."
+                        : "This shelter is full and is not accepting waitlist registrations."
+                    : "Requesting a bed is free. Your info is only shared with this shelter's intake team."}</p>
             </article>
 
             <article class="panel detail-section">
@@ -1004,19 +1112,87 @@ function renderPublicShelterDetail() {
     `;
 }
 
+function openPublicShelterDialog(shelterId) {
+    const shelter = state.shelters.find((entry) => entry.id === shelterId);
+    if (!shelter) {
+        return;
+    }
+
+    state.publicSelectedShelterId = shelterId;
+    state.publicShelterDialogView = "details";
+    state.publicRequestSuccess = null;
+    hydratePublicRequestForm(shelter);
+    elements.publicShelterDialogContent.innerHTML = renderPublicShelterDetailContent(shelter, { modal: true });
+    elements.publicShelterDialog.showModal();
+    document.querySelector("#public-shelter-dialog-close").focus();
+}
+
+function openPublicShelterDetailsDialog() {
+    const shelter = getPublicRequestShelter();
+    if (!shelter) {
+        return;
+    }
+
+    state.publicShelterDialogView = "details";
+    elements.publicShelterDialogContent.innerHTML = renderPublicShelterDetailContent(shelter, { modal: true });
+    document.querySelector("#public-shelter-dialog-title")?.focus();
+}
+
+function openPublicRequestDialog() {
+    const shelter = getPublicRequestShelter();
+    if (!shelter) {
+        return;
+    }
+
+    state.publicShelterDialogView = "request";
+    elements.publicShelterDialogContent.innerHTML = renderPublicRequestContent(shelter, { modal: true });
+    document.querySelector("#public-shelter-dialog-title")?.focus();
+}
+
+function closePublicShelterDialog() {
+    if (elements.publicShelterDialog.open) {
+        elements.publicShelterDialog.close();
+    }
+}
+
 function renderPublicRequestView() {
     const shelter = getRouteShelter();
     if (!shelter) {
         return renderEmptyState("Shelter not found", "Go back to the shelter list and choose a shelter before sending a request.");
     }
 
+    return renderPublicRequestContent(shelter);
+}
+
+function renderPublicRequestContent(shelter, { modal = false } = {}) {
+    const isFull = shelter.availableBeds <= 0;
+    const isClosed = shelter.operationalStatus === "TEMPORARILY_CLOSED";
+    const isWaitlist = !isClosed && isFull && shelter.supportsWaitlist;
+    if (isClosed || (isFull && !shelter.supportsWaitlist)) {
+        return `
+            <section class="request-layout ${modal ? "modal-request-layout" : ""}">
+                <article class="panel request-panel full-registration-blocked">
+                    ${modal
+                        ? `<button class="back-link subtle modal-back-button" type="button" data-public-request-back>← Back to shelter details</button>`
+                        : `<a class="back-link subtle" href="#/shelters/${shelter.id}">← Back to shelter details</a>`}
+                    <p class="eyebrow">${isClosed ? "Shelter closed" : "Shelter full"}</p>
+                    <h2${modal ? ` id="public-shelter-dialog-title" tabindex="-1"` : ""}>${escapeHtml(shelter.name)}</h2>
+                    <div class="flash error">${isClosed ? "This shelter is temporarily closed. Registration and waitlisting are unavailable." : "This shelter is full. Registration is unavailable and it is not accepting a waitlist."}</div>
+                </article>
+            </section>
+        `;
+    }
     return `
-        <section class="request-layout">
+        <section class="request-layout ${modal ? "modal-request-layout" : ""}">
             <article class="panel request-panel">
-                <a class="back-link subtle" href="#/shelters/${shelter.id}">← Back to shelter details</a>
-                <p class="eyebrow">Request a bed</p>
-                <h2>${escapeHtml(shelter.name)}</h2>
-                <p class="helper-text">${escapeHtml(shelter.intakeInstructions || "Staff will review your request using the shelter details already on file.")}</p>
+                ${modal
+                    ? `<button class="back-link subtle modal-back-button" type="button" data-public-request-back>← Back to shelter details</button>`
+                    : `<a class="back-link subtle" href="#/shelters/${shelter.id}">← Back to shelter details</a>`}
+                <p class="eyebrow">${isWaitlist ? "Join waitlist" : "Request a bed"}</p>
+                <h2${modal ? ` id="public-shelter-dialog-title" tabindex="-1"` : ""}>${escapeHtml(shelter.name)}</h2>
+                <p class="helper-text">${isWaitlist
+                    ? "This shelter is full. Submit your information to join the waitlist; this does not reserve or confirm a bed."
+                    : escapeHtml(shelter.intakeInstructions || "Staff will review your request using the shelter details already on file.")}</p>
                 <div class="chip-row">
                     ${renderAvailabilityPill(shelter, getAvailabilityLabel(shelter))}
                     ${renderOutlineChip(formatLabel(shelter.populationType))}
@@ -1024,7 +1200,7 @@ function renderPublicRequestView() {
                 </div>
                 ${state.publicRequestSuccess ? `
                     <div class="flash success">
-                        Request sent. Booking #${state.publicRequestSuccess.id} is now ${formatLabel(state.publicRequestSuccess.status)}.
+                        ${isWaitlist ? "Waitlist request sent" : "Request sent"}. Booking #${state.publicRequestSuccess.id} is now ${formatLabel(state.publicRequestSuccess.status)}.
                     </div>
                 ` : ""}
             </article>
@@ -1041,10 +1217,12 @@ function renderPublicRequestView() {
                 ${renderTextAreaField("intakeNotes", "Anything staff should know? (optional)", state.publicRequestForm.intakeNotes, state.publicRequestErrors.intakeNotes)}
                 ${state.publicRequestErrors.message ? `<div class="form-error">${escapeHtml(state.publicRequestErrors.message)}</div>` : ""}
                 <div class="card-actions">
-                    <a class="button ghost" href="#/shelters/${shelter.id}">Back to shelter details</a>
-                    <button class="button" type="submit">Send booking request</button>
+                    ${modal
+                        ? `<button class="button ghost" type="button" data-public-request-back>Back to shelter details</button>`
+                        : `<a class="button ghost" href="#/shelters/${shelter.id}">Back to shelter details</a>`}
+                    <button class="button" type="submit">${isWaitlist ? "Join waitlist" : "Send booking request"}</button>
                 </div>
-                <p class="helper-text">This MVP request uses the live booking API and sends a minimal guest profile to staff for review.</p>
+                <p class="helper-text">${isWaitlist ? "Joining the waitlist does not guarantee a bed. Staff can review this entry in the live queue." : "This request uses the live booking API and sends a minimal guest profile to staff for review."}</p>
             </form>
         </section>
     `;
@@ -1096,6 +1274,10 @@ function renderStaffApp() {
             </header>
 
             <main class="content staff-content">
+                ${renderFlash()}
+                ${renderConnectionBanner()}
+                ${state.route.view === "dashboard" ? renderStaffSummaryCards() : ""}
+
                 <header class="topbar">
                     <div>
                         <h2>${state.route.view === "dashboard" ? "Booking queue" : state.route.view === "availability" ? "Availability" : state.route.view === "turnaways" ? "Turn-away logs" : state.route.view === "demand" ? "Guest type demand" : "Shelter settings"}</h2>
@@ -1106,9 +1288,7 @@ function renderStaffApp() {
                     </div>
                 </header>
 
-                ${renderFlash()}
-                ${renderConnectionBanner()}
-                ${renderStaffSummaryCards()}
+                ${state.route.view === "dashboard" ? "" : renderStaffSummaryCards()}
                 ${renderStaffContent()}
                 <footer class="staff-footer">
                     <span>If you or someone with you is in immediate danger, call <strong>911</strong>. For 24-hour crisis support, call <strong>988</strong>.</span>
@@ -1120,6 +1300,22 @@ function renderStaffApp() {
 }
 
 function renderStaffSummaryCards() {
+    if (state.route.view === "availability") {
+        const total = state.shelters.reduce((sum, shelter) => sum + (shelter.totalCapacity ?? 0), 0);
+        const occupied = state.shelters.reduce((sum, shelter) => sum + (shelter.currentOccupancy ?? 0), 0);
+        const held = countBookings(["ADMITTED"]);
+        const open = Math.max(total - occupied - held, 0);
+
+        return `
+            <section class="availability-summary panel" aria-label="Capacity summary">
+                ${renderCapacitySummaryItem("Open", open, "success")}
+                ${renderCapacitySummaryItem("Held", held, "neutral-accent")}
+                ${renderCapacitySummaryItem("Occupied", occupied, "warn")}
+                ${renderCapacitySummaryItem("Total capacity", total, "muted")}
+            </section>
+        `;
+    }
+
     return `
         <section class="stats-grid staff-kpi-grid">
             ${renderKpiCard("Open beds", `${sumAvailableBeds()}`, `of ${state.shelters.reduce((sum, shelter) => sum + (shelter.totalCapacity ?? 0), 0)}`, "success")}
@@ -1161,25 +1357,21 @@ function renderStaffDashboard() {
             </div>
         </section>
 
-        <section class="table-shell staff-table-shell">
+        <section class="staff-queue-shell">
             ${state.loadingBookings && state.bookings.length === 0 ? renderEmptyState("Loading bookings", "Fetching staff review data.") : filteredBookings.length === 0
                 ? renderEmptyState("No bookings match this filter.", "Try a different booking state.")
                 : `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Guest</th>
-                                <th>Requested</th>
-                                <th>Arrival</th>
-                                <th>Party</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${filteredBookings.map(renderStaffBookingRow).join("")}
-                        </tbody>
-                    </table>
+                    <div class="queue-table-head" aria-hidden="true">
+                        <span>Guest</span>
+                        <span>Requested</span>
+                        <span>Arrival</span>
+                        <span>Party</span>
+                        <span>Status</span>
+                        <span>Actions</span>
+                    </div>
+                    <div class="staff-queue-list" role="list">
+                        ${filteredBookings.map(renderStaffBookingRow).join("")}
+                    </div>
                 `}
         </section>
 
@@ -1308,7 +1500,7 @@ function renderStaffSettings() {
 
     return `
         <section class="split-layout">
-            <aside class="panel-card">
+            <aside class="panel-card shelter-records-panel">
                 <div class="panel-header">
                     <div>
                         <p class="eyebrow">Shelter records</p>
@@ -1321,16 +1513,17 @@ function renderStaffSettings() {
                     <input id="staff-shelter-search" value="${escapeHtml(state.staffShelterSearch)}" placeholder="Search by name or city">
                 </label>
 
-                <div class="detail-grid">
+                <div class="detail-grid shelter-record-list">
                     ${visibleShelters.map((entry) => `
-                        <button class="button secondary" data-staff-shelter-select="${entry.id}">
-                            ${escapeHtml(entry.name)} · ${escapeHtml(entry.city)}
+                        <button class="button secondary shelter-record-option ${entry.id === shelter?.id ? "selected" : ""}" data-staff-shelter-select="${entry.id}" aria-pressed="${entry.id === shelter?.id}">
+                            <span>${escapeHtml(entry.name)}</span>
+                            <small>${escapeHtml(entry.city)}</small>
                         </button>
                     `).join("") || `<div class="helper-text">No shelters match this search.</div>`}
                 </div>
             </aside>
 
-            <section class="form-shell">
+            <section class="form-shell shelter-editor-panel">
                 ${shelter ? renderStaffShelterForm(shelter) : renderEmptyState("No shelter selected", "Choose a shelter to update its staff-facing configuration.")}
             </section>
         </section>
@@ -1344,8 +1537,8 @@ function renderStaffTurnAways() {
 
     return `
         <section class="turn-away-layout">
-            <article class="panel-card">
-                <div class="panel-header">
+            <article class="panel-card turn-away-form-panel">
+                <div class="panel-header turn-away-form-header">
                     <div>
                         <p class="eyebrow">Quick intake logging</p>
                         <h3>Record a turn-away</h3>
@@ -1373,7 +1566,7 @@ function renderStaffTurnAways() {
                 </form>
             </article>
 
-            <section class="panel-card">
+            <section class="panel-card turn-away-history-panel">
                 <div class="section-header">
                     <div>
                         <p class="eyebrow">Recent history</p>
@@ -1396,74 +1589,102 @@ function renderStaffTurnAways() {
 
 function renderStaffBookingRow(booking) {
     const detailOpen = booking.id === state.staffSelectedBookingId;
+    const statusLabel = booking.status === "REQUESTED"
+        ? "Pending review"
+        : booking.status === "WAITLISTED"
+            ? "Waitlisted"
+            : booking.status === "ADMITTED"
+                ? "Admitted"
+                : booking.status === "CHECKED_IN"
+                    ? "Checked in"
+                    : booking.status === "REJECTED"
+                        ? "Declined"
+                        : booking.status === "CHECKED_OUT"
+                            ? "Checked out"
+                            : formatLabel(booking.status);
     return `
-        <tr data-staff-booking="${booking.id}" class="${detailOpen ? "selected" : ""}">
-            <td data-label="Guest">
-                <div class="staff-guest-cell">
+        <article data-staff-booking="${booking.id}" class="queue-card${detailOpen ? " selected" : ""}" role="listitem" tabindex="0">
+            <div class="queue-card-summary">
+                <div class="queue-cell queue-guest-cell">
                     <span class="guest-avatar">${escapeHtml(getGuestInitials(booking.guest.displayName))}</span>
                     <div class="booking-main">
                         <strong>${escapeHtml(booking.guest.displayName)}</strong>
                         <span class="booking-meta">BKG-${booking.id}</span>
                     </div>
                 </div>
-            </td>
-            <td data-label="Requested">${escapeHtml(formatRelativeTime(booking.requestedAt))}</td>
-            <td data-label="Arrival">${escapeHtml(formatDate(booking.requestedBedDate))}</td>
-            <td data-label="Party">1</td>
-            <td data-label="Status">${renderStatusBadge(booking.status)}</td>
-            <td data-label="Actions">
-                <div class="staff-row-actions">
+                <div class="queue-cell"><span class="queue-mobile-label">Requested</span>${escapeHtml(formatRelativeTime(booking.requestedAt))}</div>
+                <div class="queue-cell"><span class="queue-mobile-label">Arrival</span>${escapeHtml(formatDate(booking.requestedBedDate))}</div>
+                <div class="queue-cell"><span class="queue-mobile-label">Party</span>1</div>
+                <div class="queue-cell">
+                    <span class="queue-mobile-label">Status</span>
+                    <span class="status-badge ${booking.status === "REQUESTED" || booking.status === "WAITLISTED" ? "warn" : booking.status === "REJECTED" ? "error" : ["CANCELLED", "CHECKED_OUT"].includes(booking.status) ? "neutral" : "success"}">${escapeHtml(statusLabel)}</span>
+                </div>
+                <div class="queue-cell queue-card-actions">
                     ${getAllowedStaffActions(booking).map((action) => `
-                        <button class="button inline ${action === "reject" ? "danger-button" : ""}" data-staff-action="${action}" data-booking-id="${booking.id}">
-                            ${action === "admit" ? "✓ Admit" : action === "waitlist" ? "◷ Waitlist" : action === "reject" ? "✕ Decline" : action === "check-in" ? "✓ Check in" : "↗ Check out"}
+                        <button class="button inline ${action === "reject" ? "danger-button" : action === "admit" || action === "check-in" ? "staff-primary-action" : "staff-secondary-action"}" data-staff-action="${action}" data-booking-id="${booking.id}">
+                            ${action === "admit" ? "Admit" : action === "waitlist" ? "Waitlist" : action === "reject" ? "Decline" : action === "check-in" ? "Check in" : "Check out"}
                         </button>
                     `).join("")}
-                    <button class="icon-button chevron-button" type="button">${detailOpen ? "⌃" : "⌄"}</button>
+                    <button class="button inline ghost staff-detail-toggle" type="button" aria-expanded="${detailOpen}" aria-label="${detailOpen ? "Hide" : "Show"} details for ${escapeHtml(booking.guest.displayName)}">${detailOpen ? "Hide details" : "Details"}</button>
                 </div>
-            </td>
-        </tr>
-        ${detailOpen ? `
-            <tr class="detail-row">
-                <td colspan="6">
+            </div>
+
+            ${(booking.intakeNotes || booking.decisionNotes) ? `
+                <div class="queue-card-notes">${escapeHtml(booking.decisionNotes || booking.intakeNotes || "")}</div>
+            ` : ""}
+
+            ${detailOpen ? `
+                <div class="queue-card-detail">
                     <div class="staff-detail-grid">
                         <div><span>Contact</span><strong>${escapeHtml(booking.guest.phoneNumber || "Not provided")}</strong></div>
                         <div><span>Accessibility</span><strong>${escapeHtml(booking.intakeNotes || "—")}</strong></div>
                         <div><span>Notes</span><strong>${escapeHtml(booking.decisionNotes || booking.intakeNotes || "No extra notes.")}</strong></div>
                     </div>
-                </td>
-            </tr>
-        ` : ""}
+                </div>
+            ` : ""}
+        </article>
     `;
 }
 
 function renderStaffAvailabilityCard(shelter) {
     const occupancyRate = shelter.totalCapacity > 0 ? Math.round((shelter.currentOccupancy / shelter.totalCapacity) * 100) : 0;
+    const held = state.bookings.filter((booking) => booking.shelter?.id === shelter.id && booking.status === "ADMITTED").length;
+    const open = Math.max((shelter.totalCapacity ?? 0) - (shelter.currentOccupancy ?? 0) - held, 0);
+    const occupiedWidth = shelter.totalCapacity > 0 ? Math.min((shelter.currentOccupancy / shelter.totalCapacity) * 100, 100) : 0;
+    const heldWidth = shelter.totalCapacity > 0 ? Math.min((held / shelter.totalCapacity) * 100, 100 - occupiedWidth) : 0;
     return `
         <article class="availability-card panel">
-            <div class="card-top">
-                <div>
-                    <p class="eyebrow">${escapeHtml(shelter.city)}</p>
-                    <h3>${escapeHtml(shelter.name)}</h3>
-                    <p class="helper-text">${escapeHtml(shelter.address)}</p>
+            <div class="availability-card-head">
+                <div class="availability-room-title">
+                    <span class="availability-room-icon" aria-hidden="true">▱</span>
+                    <div>
+                        <h3>${escapeHtml(shelter.name)}</h3>
+                        <p>${escapeHtml(formatLabel(shelter.populationType))} · ${escapeHtml(shelter.city)}</p>
+                    </div>
                 </div>
-                ${renderChip(`${shelter.availableBeds} beds open`, occupancyRate >= 100 ? "error" : occupancyRate >= 85 ? "warn" : "success")}
+                <strong class="availability-open-count"><span class="dot ${open === 0 ? "error" : open <= 3 ? "warn" : "success"}"></span>${open} open <span>/ ${shelter.totalCapacity}</span></strong>
             </div>
 
-            <div class="occupancy-row">
-                <strong>${shelter.currentOccupancy}/${shelter.totalCapacity}</strong>
-                <span>${occupancyRate}% occupied</span>
-            </div>
-            <div class="occupancy-track">
-                <div class="occupancy-fill ${occupancyRate >= 95 ? "critical" : ""}" style="width: ${Math.min(occupancyRate, 100)}%"></div>
+            <div class="occupancy-track" aria-label="${occupancyRate}% occupied, ${held} held, ${open} open">
+                <div class="occupancy-fill ${occupancyRate >= 95 ? "critical" : ""}" style="width: ${occupiedWidth}%"></div>
+                <div class="occupancy-held" style="width: ${heldWidth}%"></div>
             </div>
 
-            <div class="fact-grid">
-                <div class="fact-box"><span>Status</span>${escapeHtml(formatLabel(shelter.operationalStatus))}</div>
-                <div class="fact-box"><span>Intake</span>${escapeHtml(formatLabel(shelter.intakeType))}</div>
-                <div class="fact-box"><span>Barrier</span>${escapeHtml(formatLabel(shelter.barrierLevel))}</div>
-                <div class="fact-box"><span>Population</span>${escapeHtml(formatLabel(shelter.populationType))}</div>
+            <div class="availability-control-grid">
+                <div class="availability-count-block"><span>Occupied</span><strong>${shelter.currentOccupancy}</strong></div>
+                <div class="availability-count-block"><span>Held for arrival</span><strong>${held}</strong></div>
             </div>
+            <div class="availability-card-foot"><span>${occupancyRate}% utilized</span><span>${escapeHtml(formatLabel(shelter.operationalStatus))} · ${escapeHtml(formatLabel(shelter.intakeType))}</span></div>
         </article>
+    `;
+}
+
+function renderCapacitySummaryItem(label, value, tone) {
+    return `
+        <div class="capacity-summary-item ${tone}">
+            <span><span class="dot ${tone === "success" ? "success" : tone === "warn" ? "warn" : tone === "neutral-accent" ? "accent" : "neutral"}"></span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(String(value))}</strong>
+        </div>
     `;
 }
 
@@ -1537,10 +1758,10 @@ function renderPublicFilterChip(key, label, active) {
     return `<button class="filter-chip ${active ? "active" : ""}" data-public-toggle="${key}">${escapeHtml(label)}</button>`;
 }
 
-function renderFilterSelect(name, label, value, options) {
+function renderFilterSelect(name, label, value, options, accessibleLabel = label) {
     return `
         <label class="field public-filter-select">
-            <span class="sr-only">${escapeHtml(label)}</span>
+            <span class="sr-only">${escapeHtml(accessibleLabel)}</span>
             <select name="${name}" data-public-filter-select="true">
                 <option value="">${escapeHtml(label)}</option>
                 ${options.map((option) => `<option value="${option}" ${option === value ? "selected" : ""}>${escapeHtml(formatLabel(option))}</option>`).join("")}
@@ -1680,16 +1901,28 @@ function getFilteredPublicShelters() {
     const query = state.publicSearch.trim().toLowerCase();
 
     return state.shelters.filter((shelter) => {
-        if (query && !`${shelter.name} ${shelter.city} ${shelter.populationType}`.toLowerCase().includes(query)) {
+        const searchableText = [
+            shelter.name,
+            shelter.organizationName,
+            shelter.city,
+            shelter.address,
+            shelter.populationType,
+            shelter.barrierLevel,
+            shelter.intakeType,
+            shelter.intakeInstructions,
+            shelter.programs,
+            shelter.notes
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (query && !searchableText.includes(query)) {
             return false;
         }
-        if (state.publicAvailableOnly && shelter.availableBeds <= 0) {
+        if (state.publicAvailableOnly && (shelter.availableBeds <= 0 || !isOperationalShelter(shelter))) {
             return false;
         }
         if (state.publicOpenNowOnly && !isShelterOpenNow(shelter)) {
             return false;
         }
-        if (state.publicCallAheadOnly && !shelter.callAheadRequired) {
+        if (state.publicCallAheadOnly && !shelter.callAheadRequired && shelter.intakeType !== "CALL_AHEAD") {
             return false;
         }
         if (state.publicWheelchairOnly && !shelter.wheelchairAccessible) {
@@ -1708,8 +1941,31 @@ function getFilteredPublicShelters() {
     });
 }
 
+function hasActivePublicFilters() {
+    return Boolean(
+        state.publicSearch.trim()
+        || state.publicAvailableOnly
+        || state.publicOpenNowOnly
+        || state.publicCallAheadOnly
+        || state.publicWheelchairOnly
+        || state.publicPetsOnly
+        || state.publicBarrierLevel
+        || state.publicPopulationType
+        || state.nearbyMode
+    );
+}
+
+function isOperationalShelter(shelter) {
+    return ["OPEN", "LIMITED"].includes(shelter.operationalStatus);
+}
+
 function getRouteShelter() {
     return state.shelters.find((shelter) => shelter.id === state.route.shelterId) || null;
+}
+
+function getPublicRequestShelter() {
+    const shelterId = state.publicSelectedShelterId ?? state.route.shelterId;
+    return state.shelters.find((shelter) => shelter.id === shelterId) || null;
 }
 
 function getFilteredStaffBookings() {
@@ -1764,7 +2020,7 @@ function getAvailabilityLabel(shelter) {
         return { label: "Temporarily closed", tone: "error" };
     }
     if (shelter.availableBeds <= 0) {
-        return { label: "No beds showing", tone: "warn" };
+        return { label: "Full", tone: "full" };
     }
     return { label: `${shelter.availableBeds} beds available`, tone: "success" };
 }
@@ -1778,8 +2034,13 @@ function renderOutlineChip(label) {
 }
 
 function renderAvailabilityPill(shelter, availability) {
-    const label = shelter.totalCapacity ? `${shelter.availableBeds} open / ${shelter.totalCapacity}` : availability.label;
-    return `<span class="availability-pill ${availability.tone}"><span class="dot ${availability.tone === "warn" ? "warn" : availability.tone === "error" ? "error" : "success"}"></span>${escapeHtml(label)}</span>`;
+    const label = shelter.operationalStatus === "TEMPORARILY_CLOSED"
+        ? "Temporarily closed"
+        : shelter.availableBeds <= 0
+        ? "Full"
+        : shelter.totalCapacity ? `${shelter.availableBeds} open / ${shelter.totalCapacity}` : availability.label;
+    const dotTone = ["warn", "error", "full"].includes(availability.tone) ? availability.tone : "success";
+    return `<span class="availability-pill ${availability.tone}"><span class="dot ${dotTone}"></span>${escapeHtml(label)}</span>`;
 }
 
 function renderStatusBadge(status) {
@@ -1810,7 +2071,7 @@ function handlePublicRequestInput(event) {
 }
 
 async function submitPublicBooking() {
-    const shelter = getRouteShelter();
+    const shelter = getPublicRequestShelter();
     if (!shelter) {
         return;
     }
@@ -1828,13 +2089,14 @@ async function submitPublicBooking() {
     };
 
     try {
-        const response = await apiFetch("/api/bookings/public", {
+        const isWaitlist = shelter.availableBeds <= 0 && shelter.supportsWaitlist;
+        const response = await apiFetch(isWaitlist ? "/api/bookings/public/waitlist" : "/api/bookings/public", {
             method: "POST",
             body: JSON.stringify(payload)
         });
         state.publicRequestSuccess = response;
         state.publicRequestErrors = {};
-        showFlash("Booking request sent to staff for review.", "success");
+        showFlash(isWaitlist ? "You joined the shelter waitlist." : "Booking request sent to staff for review.", "success");
         state.publicRequestForm = buildEmptyPublicRequestForm();
         hydratePublicRequestForm();
         await Promise.all([loadShelters({ silent: true }), loadBookings({ silent: true })]);
@@ -1846,14 +2108,16 @@ async function submitPublicBooking() {
         showFlash(error.message || "Could not send booking request.", "error");
     } finally {
         render();
+        if (elements.publicShelterDialog.open && state.publicShelterDialogView === "request") {
+            openPublicRequestDialog();
+        }
     }
 }
 
-function hydratePublicRequestForm() {
-    const currentShelter = getRouteShelter();
+function hydratePublicRequestForm(shelter = getPublicRequestShelter()) {
     state.publicRequestForm = {
         ...buildEmptyPublicRequestForm(),
-        shelterId: currentShelter?.id ?? null
+        shelterId: shelter?.id ?? null
     };
     state.publicRequestErrors = {};
 }
@@ -2327,7 +2591,7 @@ function formatIntakeWindow(shelter) {
 }
 
 function isShelterOpenNow(shelter) {
-    if (!["OPEN", "LIMITED"].includes(shelter.operationalStatus)) {
+    if (!isOperationalShelter(shelter)) {
         return false;
     }
     if (shelter.open24Hours) {
@@ -2337,7 +2601,7 @@ function isShelterOpenNow(shelter) {
         return false;
     }
 
-    const now = APP_NOW;
+    const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const startMinutes = timeStringToMinutes(shelter.intakeStartTime);
     const cutoffMinutes = timeStringToMinutes(shelter.intakeCutoffTime);

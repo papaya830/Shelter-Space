@@ -4,10 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shelter-Space</title>
-    <link rel="stylesheet" href="/assets/app.css?v=20260719-spacing">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/app.css?v=20260721-turnaway-margins-v1">
 </head>
 <body>
 <div id="root"></div>
+
+<dialog id="public-shelter-dialog" class="public-shelter-dialog" aria-labelledby="public-shelter-dialog-title">
+    <button type="button" id="public-shelter-dialog-close" class="icon-button public-dialog-close" aria-label="Close shelter details">×</button>
+    <div id="public-shelter-dialog-content"></div>
+</dialog>
 
 <dialog id="booking-action-dialog" class="dialog">
     <form id="booking-action-form" method="dialog" class="dialog-form">
@@ -40,7 +48,7 @@
     </form>
 </dialog>
 
-<script type="module" src="/assets/app.js?v=20260719-spacing"></script>
+<script type="module" src="/assets/app.js?v=20260721-functional-smoke-v2"></script>
 <script>
     if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/sw.js").catch(() => {});

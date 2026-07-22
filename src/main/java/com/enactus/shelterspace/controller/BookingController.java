@@ -58,6 +58,17 @@ public class BookingController {
         return ResponseEntity.created(location).body(createdBooking);
     }
 
+    @PostMapping("/public/waitlist")
+    public ResponseEntity<BookingResponse> createPublicWaitlist(@Valid @RequestBody PublicBookingRequest request) {
+        BookingResponse createdBooking = bookingService.createPublicWaitlistRequest(request);
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentContextPath()
+                .path("/api/bookings/{id}")
+                .buildAndExpand(createdBooking.id())
+                .toUri();
+        return ResponseEntity.created(location).body(createdBooking);
+    }
+
     @PostMapping("/{id}/admit")
     public BookingResponse admit(@PathVariable Long id, @Valid @RequestBody BookingDecisionRequest request) {
         return bookingService.admit(id, request);

@@ -73,6 +73,39 @@ class ChatbotControllerTest {
     }
 
     @Test
+    void naturalLanguageBedRequestUsesSafeKeywordFlowWithoutOllama() throws Exception {
+        mockMvc.perform(post("/api/chatbot/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "clientSessionId": "chat-natural-bed",
+                                  "alias": "Sam",
+                                  "message": "I need to find a shelter bed tonight"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("CHOOSING"))
+                .andExpect(jsonPath("$.messages[0]", containsString("Shelters with space right now")));
+    }
+
+    @Test
+    void accessibilityQuestionUsesLiveShelterSearchWithoutDependingOnOllama() throws Exception {
+        mockMvc.perform(post("/api/chatbot/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "clientSessionId": "chat-accessibility",
+                                  "alias": "Sam",
+                                  "message": "Is there a wheelchair accessible shelter with space?"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("IDLE"))
+                .andExpect(jsonPath("$.messages[0]", containsString("wheelchair-accessible shelters with space")))
+                .andExpect(jsonPath("$.messages[0]", containsString("Union Gospel (2 bed(s))")));
+    }
+
+    @Test
     void chatbotFlowCreatesBookingAndStatusTracksStaffAdmit() throws Exception {
         String sessionId = "chat-flow-1";
         String alias = "Jordan";

@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-07-21 Local Assistant, Waitlists, Demo Data, And UI Reliability
+
+### Added
+
+- optional local Ollama integration for grounded, open-ended shelter questions, with configurable model, host, and timeout
+- natural-language routing into the deterministic chatbot booking commands
+- `POST /api/bookings/public/waitlist` for direct public waitlist registration at full shelters that support waitlisting
+- expanded startup demo data with 17 guest profiles, 17 bookings across every lifecycle status, and guest-linked turn-away history
+- `scripts/seed-turnaways-demand.sh` for populating guest-linked turn-away records and anonymized demand signals
+- `scripts/smoke-test.sh` for repeatable end-to-end lifecycle verification against a running application
+
+### Changed
+
+- full shelter cards are greyed out and show either a waitlist action or an unavailable-registration state
+- temporarily closed shelters suppress both registration and waitlisting regardless of nominal capacity
+- public filters now use current time, exclude closed shelters from `Has space`, search additional shelter fields, and support reliable clear-all behavior
+- factual availability, accessibility, and pet questions use deterministic live-data retrieval instead of model-generated filtering
+- Turn-aways and Shelter Settings staff layouts now use responsive, bounded workspaces with corrected spacing and overflow
+- frontend dates now use the actual current date instead of a fixed demo timestamp
+- route changes close stale public shelter dialogs before rendering another application area
+- service-worker and asset versions are advanced with UI releases to prevent stale JavaScript and CSS
+
+### Safety And Lifecycle Rules
+
+- public booking registration is rejected when a shelter is full
+- public waitlisting is allowed only when a shelter is full, operational, and configured with `supportsWaitlist=true`
+- waitlisted guests remain eligible for staff review but cannot be admitted while capacity is full
+- check-out releases occupancy; staff may then admit a requested or waitlisted guest
+- closed shelters reject booking and waitlist requests at both UI and API layers
+
+### Tests
+
+- added controller coverage for public full-shelter conflicts, public waitlist creation, available-shelter waitlist conflicts, and closed-shelter restrictions
+- added chatbot coverage for natural-language bed requests and deterministic accessibility lookup
+- verified public filters, registration defaults, staff navigation, staff forms, modal cleanup, and console health in the running frontend
+- verified registration, public/staff waitlists, admit, check-in, check-out, reject, cancel, queue reload, turn-away logging, analytics, and chatbot flows with the lifecycle smoke script
+- verified the full Gradle test suite passes
+
 ## 2026-07-18 Operations And Discovery
 
 ### Added

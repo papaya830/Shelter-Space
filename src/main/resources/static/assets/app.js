@@ -675,7 +675,7 @@ function bindViewEvents() {
 
     document.querySelectorAll("[data-staff-booking]").forEach((row) => {
         row.addEventListener("click", (event) => {
-            if (event.target.closest("[data-staff-action]")) {
+            if (event.target.closest("[data-staff-action], [data-staff-reminder]")) {
                 return;
             }
             const bookingId = Number(row.dataset.staffBooking);
@@ -1589,6 +1589,7 @@ function renderStaffTurnAways() {
 
 function renderStaffBookingRow(booking) {
     const detailOpen = booking.id === state.staffSelectedBookingId;
+    const reminderLink = buildReminderSmsLink(booking);
     const statusLabel = booking.status === "REQUESTED"
         ? "Pending review"
         : booking.status === "WAITLISTED"
@@ -1620,6 +1621,9 @@ function renderStaffBookingRow(booking) {
                     <span class="status-badge ${booking.status === "REQUESTED" || booking.status === "WAITLISTED" ? "warn" : booking.status === "REJECTED" ? "error" : ["CANCELLED", "CHECKED_OUT"].includes(booking.status) ? "neutral" : "success"}">${escapeHtml(statusLabel)}</span>
                 </div>
                 <div class="queue-cell queue-card-actions">
+                    ${reminderLink
+                        ? `<a class="button inline staff-secondary-action staff-reminder-action" data-staff-reminder href="${escapeHtml(reminderLink)}" aria-label="Send reminder to ${escapeHtml(booking.guest.displayName)}">Send reminder</a>`
+                        : `<button class="button inline staff-secondary-action staff-reminder-action" type="button" disabled title="No phone number provided">Send reminder</button>`}
                     ${getAllowedStaffActions(booking).map((action) => `
                         <button class="button inline ${action === "reject" ? "danger-button" : action === "admit" || action === "check-in" ? "staff-primary-action" : "staff-secondary-action"}" data-staff-action="${action}" data-booking-id="${booking.id}">
                             ${action === "admit" ? "Admit" : action === "waitlist" ? "Waitlist" : action === "reject" ? "Decline" : action === "check-in" ? "Check in" : "Check out"}
@@ -1644,6 +1648,33 @@ function renderStaffBookingRow(booking) {
             ` : ""}
         </article>
     `;
+}
+
+function buildReminderSmsLink(booking) {
+    const phoneNumber = normalizeSmsPhoneNumber(booking.guest?.phoneNumber);
+    if (!phoneNumber) {
+        return null;
+    }
+
+    const shelterName = booking.shelter?.name || "the shelter";
+    const bookingCode = `BKG-${booking.id}`;
+    const date = formatDate(booking.requestedBedDate);
+    const message = booking.status === "ADMITTED"
+        ? `Shelter Space reminder: Your bed at ${shelterName} is held for ${date}. Code ${bookingCode}. Contact the shelter if your plans change.`
+        : `Shelter Space reminder: Your request at ${shelterName} is ${formatLabel(booking.status).toLowerCase()} for ${date}. Code ${bookingCode}.`;
+
+    return `sms:${phoneNumber}?body=${encodeURIComponent(message)}`;
+}
+
+function normalizeSmsPhoneNumber(value) {
+    const phoneNumber = String(value || "").trim();
+    if (!phoneNumber) {
+        return null;
+    }
+
+    const hasLeadingPlus = phoneNumber.startsWith("+");
+    const digits = phoneNumber.replace(/\D/g, "");
+    return digits ? `${hasLeadingPlus ? "+" : ""}${digits}` : null;
 }
 
 function renderStaffAvailabilityCard(shelter) {

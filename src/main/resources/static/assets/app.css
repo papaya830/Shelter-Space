@@ -1534,8 +1534,22 @@ tbody tr:hover {
 .queue-card-actions {
     display: flex;
     gap: 6px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     justify-content: flex-end;
+}
+
+.queue-card-actions .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: 38px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.staff-reminder-action {
+    min-width: 132px;
 }
 
 .staff-primary-action {
@@ -1546,12 +1560,20 @@ tbody tr:hover {
 
 .staff-primary-action:hover {
     background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: white;
 }
 
 .staff-secondary-action {
     background: var(--panel);
     border-color: var(--line-strong);
     color: var(--text);
+}
+
+.staff-secondary-action:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: white;
 }
 
 .staff-detail-toggle {

@@ -1,4 +1,4 @@
-const STATIC_CACHE = "ss-static-v14";
+const STATIC_CACHE = "ss-static-v17";
 const API_CACHE = "ss-api-v2";
 
 self.addEventListener("install", () => self.skipWaiting());

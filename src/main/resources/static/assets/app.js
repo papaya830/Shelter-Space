@@ -86,6 +86,11 @@ const FILTER_CACHE_KEY = "ss_filters_v1";
 const DEVICE_ID_KEY = "ss_device_id";
 const INTEREST_CACHE_PREFIX = "ss_interest_";
 const LATENCY_WARN_MS = 4000;
+const AUTO_REFRESH_MS = 15000;
+const DATA_CHANGE_CHANNEL = "shelter-space-data-changes";
+
+let autoRefreshInFlight = false;
+let dataChangeChannel = null;
 
 const state = {
     route: parseRoute(),
@@ -117,8 +122,10 @@ const state = {
     staffSelectedShelterId: null,
     staffShelterSearch: "",
     staffShelterForm: null,
+    staffShelterDirty: false,
     staffShelterErrors: {},
     staffTurnAwayForm: buildEmptyTurnAwayForm(),
+    staffTurnAwayDirty: false,
     staffTurnAwayErrors: {},
     flash: null,
     connection: { tone: "neutral", label: "Ready" },
@@ -159,6 +166,7 @@ const elements = {
 
 async function init() {
     bootstrapChatState();
+    bindDataChangeChannel();
     const savedFilters = readFilterState();
     if (savedFilters) {
         FILTER_KEYS.forEach((key) => {
@@ -170,6 +178,7 @@ async function init() {
     bindGlobalEvents();
     await ensureDataForRoute({ silent: false });
     render();
+    startAutomaticRefresh();
 }
 
 function bindGlobalEvents() {
@@ -195,6 +204,11 @@ function bindGlobalEvents() {
         render();
     });
 
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            refreshVisibleData();
+        }
+    });
     document.querySelector("#dialog-close").addEventListener("click", closeDialog);
     document.querySelector("#dialog-cancel").addEventListener("click", closeDialog);
     document.querySelector("#public-shelter-dialog-close").addEventListener("click", closePublicShelterDialog);
@@ -241,6 +255,106 @@ function bindGlobalEvents() {
         event.preventDefault();
         await submitStaffBookingAction();
     });
+}
+
+function startAutomaticRefresh() {
+    window.setInterval(refreshVisibleData, AUTO_REFRESH_MS);
+}
+
+function bindDataChangeChannel() {
+    if (!("BroadcastChannel" in window)) {
+        return;
+    }
+    dataChangeChannel = new BroadcastChannel(DATA_CHANGE_CHANNEL);
+    dataChangeChannel.addEventListener("message", () => refreshVisibleData({ force: true }));
+}
+
+function announceDataChange() {
+    dataChangeChannel?.postMessage({ changedAt: Date.now() });
+}
+
+async function refreshVisibleData({ force = false } = {}) {
+    if (autoRefreshInFlight || document.visibilityState !== "visible" || state.networkOffline || (!force && isUserEditing())) {
+        return;
+    }
+
+    autoRefreshInFlight = true;
+    try {
+        const requests = [];
+        const keys = [];
+
+        if (state.route.mode === "public" && state.nearbyMode && state.userLat != null && state.userLng != null) {
+            keys.push("shelters");
+            requests.push(apiFetch(`/api/shelters/nearby?lat=${state.userLat}&lng=${state.userLng}&radius=100`));
+        } else if (state.route.mode === "public" || state.route.view !== "settings") {
+            keys.push("shelters");
+            requests.push(apiFetch("/api/shelters"));
+        }
+
+        if (state.route.mode === "staff") {
+            keys.push("bookings");
+            requests.push(apiFetch("/api/bookings"));
+        }
+
+        if (state.route.mode === "staff" && state.route.view === "turnaways") {
+            keys.push("turnAwayLogs");
+            requests.push(apiFetch("/api/turn-away-logs"));
+        }
+
+        if (state.route.mode === "staff" && (state.route.view === "dashboard" || state.route.view === "demand")) {
+            keys.push("demandSummary", "demandRecords");
+            requests.push(apiFetch("/api/analytics/interest/summary"), apiFetch("/api/analytics/interest/records"));
+        }
+
+        const values = await Promise.all(requests);
+        let changed = false;
+        keys.forEach((key, index) => {
+            if (!dataMatches(state[key], values[index])) {
+                state[key] = values[index];
+                changed = true;
+            }
+        });
+
+        if (keys.includes("shelters") && !state.nearbyMode) {
+            writeShelterCache(state.shelters);
+            state.sheltersCachedAt = Date.now();
+        }
+
+        if (changed) {
+            reconcileSelectionsAfterRefresh();
+            render();
+        }
+    } catch {
+        // Background refresh is best-effort; manual refresh still reports errors.
+    } finally {
+        autoRefreshInFlight = false;
+    }
+}
+
+function isUserEditing() {
+    if (elements.dialog.open || elements.publicShelterDialog.open) {
+        return true;
+    }
+    return ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+}
+
+function dataMatches(current, next) {
+    return JSON.stringify(current) === JSON.stringify(next);
+}
+
+function reconcileSelectionsAfterRefresh() {
+    if (state.staffSelectedShelterId && !state.shelters.some((shelter) => shelter.id === state.staffSelectedShelterId)) {
+        state.staffSelectedShelterId = state.shelters[0]?.id ?? null;
+    }
+    if (state.staffSelectedBookingId && !state.bookings.some((booking) => booking.id === state.staffSelectedBookingId)) {
+        state.staffSelectedBookingId = state.bookings[0]?.id ?? null;
+    }
+    if (!state.staffShelterDirty) {
+        hydrateStaffShelterForm();
+    }
+    if (!state.staffTurnAwayDirty) {
+        hydrateStaffTurnAwayForm();
+    }
 }
 
 function parseRoute() {
@@ -384,7 +498,7 @@ function writeFilterState() {
     } catch {}
 }
 
-async function loadShelters({ silent }) {
+async function loadShelters({ silent, fresh = false }) {
     // SWR step 1: hydrate from cache immediately so the UI is never blank
     const cached = readShelterCache();
     if (cached && state.shelters.length === 0) {
@@ -413,10 +527,10 @@ async function loadShelters({ silent }) {
 
     try {
         // SWR step 2: fetch fresh data in background
-        const fresh = await apiFetch("/api/shelters");
-        state.shelters = fresh;
+        const latestShelters = await apiFetch(fresh ? `/api/shelters?refresh=${Date.now()}` : "/api/shelters");
+        state.shelters = latestShelters;
         state.sheltersFetchFailed = false;
-        writeShelterCache(fresh);
+        writeShelterCache(latestShelters);
         state.sheltersCachedAt = Date.now();
         if (!state.staffSelectedShelterId && state.shelters.length > 0) {
             state.staffSelectedShelterId = state.shelters[0].id;
@@ -541,7 +655,7 @@ function bindViewEvents() {
     if (refreshButton) {
         refreshButton.addEventListener("click", async () => {
             if (state.route.mode === "staff") {
-                const tasks = [loadShelters({ silent: false }), loadBookings({ silent: false })];
+                const tasks = [loadShelters({ silent: false, fresh: true }), loadBookings({ silent: false })];
                 if (state.route.view === "turnaways") {
                     tasks.push(loadTurnAwayLogs({ silent: false }));
                 }
@@ -552,7 +666,7 @@ function bindViewEvents() {
             } else if (state.nearbyMode) {
                 await loadNearbyShelters({ silent: false });
             } else {
-                await loadShelters({ silent: false });
+                await loadShelters({ silent: false, fresh: true });
             }
             render();
         });
@@ -2125,6 +2239,7 @@ async function submitPublicBooking() {
             method: "POST",
             body: JSON.stringify(payload)
         });
+        announceDataChange();
         state.publicRequestSuccess = response;
         state.publicRequestErrors = {};
         showFlash(isWaitlist ? "You joined the shelter waitlist." : "Booking request sent to staff for review.", "success");
@@ -2158,6 +2273,7 @@ function handleStaffShelterInput(event) {
         return;
     }
     state.staffShelterErrors = {};
+    state.staffShelterDirty = true;
     state.staffShelterForm[event.target.name] = event.target.type === "checkbox"
         ? event.target.checked
         : event.target.value;
@@ -2168,6 +2284,7 @@ function handleStaffTurnAwayInput(event) {
         return;
     }
     state.staffTurnAwayErrors = {};
+    state.staffTurnAwayDirty = true;
     state.staffTurnAwayForm[event.target.name] = event.target.value;
     if (event.target.name === "shelterId") {
         state.staffSelectedShelterId = Number(event.target.value) || null;
@@ -2227,6 +2344,15 @@ async function submitStaffShelterUpdate() {
         return;
     }
 
+    const requestedCapacity = normalizeInteger(state.staffShelterForm.totalCapacity, true);
+    if (requestedCapacity < shelter.currentOccupancy) {
+        const message = `Capacity cannot be below the current occupancy of ${shelter.currentOccupancy}.`;
+        state.staffShelterErrors = { totalCapacity: message };
+        showFlash(message, "error");
+        render();
+        return;
+    }
+
     const payload = {
         ...state.staffShelterForm,
         name: state.staffShelterForm.name.trim(),
@@ -2234,7 +2360,7 @@ async function submitStaffShelterUpdate() {
         city: state.staffShelterForm.city.trim(),
         address: state.staffShelterForm.address.trim(),
         phoneNumber: normalizeBlank(state.staffShelterForm.phoneNumber),
-        totalCapacity: normalizeInteger(state.staffShelterForm.totalCapacity, true),
+        totalCapacity: requestedCapacity,
         intakeStartTime: normalizeBlank(state.staffShelterForm.intakeStartTime),
         intakeCutoffTime: normalizeBlank(state.staffShelterForm.intakeCutoffTime),
         maxStayDays: normalizeInteger(state.staffShelterForm.maxStayDays),
@@ -2248,12 +2374,17 @@ async function submitStaffShelterUpdate() {
     };
 
     try {
-        await apiFetch(`/api/shelters/${shelter.id}`, {
+        const updatedShelter = await apiFetch(`/api/shelters/${shelter.id}`, {
             method: "PUT",
             body: JSON.stringify(payload)
         });
-        showFlash("Shelter details saved.", "success");
-        await loadShelters({ silent: true });
+        state.shelters = state.shelters.map((entry) => entry.id === updatedShelter.id ? updatedShelter : entry);
+        announceDataChange();
+        state.staffShelterDirty = false;
+        showFlash(`Shelter saved. Capacity is now ${updatedShelter.totalCapacity} with ${updatedShelter.availableBeds} beds available.`, "success");
+        hydrateStaffShelterForm();
+        render();
+        await loadShelters({ silent: true, fresh: true });
     } catch (error) {
         state.staffShelterErrors = extractFieldErrors(error);
         if (!Object.keys(state.staffShelterErrors).length) {
@@ -2284,6 +2415,8 @@ async function submitStaffTurnAwayLog() {
             method: "POST",
             body: JSON.stringify(payload)
         });
+        announceDataChange();
+        state.staffTurnAwayDirty = false;
         showFlash("Turn-away log saved.", "success");
         hydrateStaffTurnAwayForm();
         await loadTurnAwayLogs({ silent: true });
@@ -2337,16 +2470,20 @@ async function submitStaffBookingAction() {
     elements.dialogSubmit.disabled = true;
     elements.dialogError.classList.add("hidden");
 
+    const completedAction = BOOKING_ACTIONS[state.dialogAction];
     try {
-        await apiFetch(`/api/bookings/${booking.id}/${BOOKING_ACTIONS[state.dialogAction].endpoint}`, {
+        const updatedBooking = await apiFetch(`/api/bookings/${booking.id}/${completedAction.endpoint}`, {
             method: "POST",
             body: JSON.stringify({
                 staffName: elements.dialogStaffName.value.trim(),
                 notes: normalizeBlank(elements.dialogNotes.value)
             })
         });
+        state.bookings = state.bookings.map((entry) => entry.id === updatedBooking.id ? updatedBooking : entry);
         closeDialog();
-        showFlash(`${BOOKING_ACTIONS[state.dialogAction].label} completed.`, "success");
+        showFlash(`${completedAction.label} completed.`, "success");
+        render();
+        announceDataChange();
         await Promise.all([loadBookings({ silent: true }), loadShelters({ silent: true })]);
         render();
     } catch (error) {

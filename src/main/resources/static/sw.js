@@ -1,5 +1,5 @@
-const STATIC_CACHE = "ss-static-v17";
-const API_CACHE = "ss-api-v2";
+const STATIC_CACHE = "ss-static-v20";
+const API_CACHE = "ss-api-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -19,9 +19,10 @@ self.addEventListener("fetch", (event) => {
     const { request } = event;
     const url = new URL(request.url);
 
-    // Stale-while-revalidate for shelter API reads
+    // Live shelter availability must prefer the network so mutations are not
+    // immediately overwritten by an older cached response.
     if (url.pathname.startsWith("/api/shelters") && request.method === "GET") {
-        event.respondWith(swrResponse(API_CACHE, request));
+        event.respondWith(networkFirstResponse(API_CACHE, request));
         return;
     }
 

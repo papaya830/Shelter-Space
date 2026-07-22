@@ -178,6 +178,15 @@ Booking API:
 Notable workflow endpoint:
 
 - `POST /api/bookings/{id}/waitlist`
+- `POST /api/bookings/public` creates a guest profile and `REQUESTED` booking when capacity is available
+- `POST /api/bookings/public/waitlist` creates a guest profile and `WAITLISTED` booking only for a full, operational shelter with waitlist support
+
+Capacity rules:
+
+- full shelters reject normal public registration
+- temporarily closed shelters reject registration and waitlisting
+- requested and waitlisted bookings cannot be admitted until a bed is available
+- check-out releases occupancy so the next eligible request can be admitted
 
 ### 4. Turn-Away Logging
 
@@ -270,14 +279,20 @@ File: [src/main/java/com/enactus/shelterspace/config/SeedDataLoader.java](/Users
 The development seed data includes:
 
 - 12 shelters
+- 17 guest profiles
+- 17 bookings covering every booking lifecycle state
+- 7 guest-linked turn-away records
 - mixed populations: men, women with children, coed, youth
 - high-barrier and low-barrier shelters
 - open, full, near-full, and temporarily closed examples
 - different intake patterns: call-ahead, line-up, first-come-first-served, referral
 - max-stay variety
-- sample guests
-- sample bookings in multiple states
-- sample turn-away logs
+- varied accessibility, contact, family, youth, referral, and intake notes
+
+Additional local tooling:
+
+- `scripts/seed-turnaways-demand.sh` populates guest-linked turn-away activity and anonymized demand signals
+- `scripts/smoke-test.sh` verifies the booking lifecycle, waitlists, turn-away logging, analytics, and chatbot against a running app
 
 The data is intended for local development and demo flows, not reporting accuracy.
 
@@ -318,7 +333,7 @@ Shelter API coverage:
 Booking API coverage:
 
 - [src/test/java/com/enactus/shelterspace/controller/BookingControllerTest.java](/Users/camille/Shelter-Space/src/test/java/com/enactus/shelterspace/controller/BookingControllerTest.java:1)
-- verifies create, list, detail, admit, reject, check-in, check-out, cancel, validation failure, conflict behavior, and 404 behavior
+- verifies create, public registration, public waitlisting, list, detail, admit, reject, check-in, check-out, cancel, closed/full shelter rules, validation failure, conflict behavior, and 404 behavior
 
 ## Recommended Next Steps
 

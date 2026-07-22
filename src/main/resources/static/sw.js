@@ -1,5 +1,5 @@
-const STATIC_CACHE = "ss-static-v4";
-const API_CACHE = "ss-api-v1";
+const STATIC_CACHE = "ss-static-v14";
+const API_CACHE = "ss-api-v2";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -25,12 +25,15 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    // Cache-first for static assets so the shell loads offline
-    if (
-        url.pathname === "/" ||
-        url.pathname === "/index.html" ||
-        url.pathname.startsWith("/assets/")
-    ) {
+    // Keep HTML network-first so new shell versions are not masked by an old
+    // cached index during iterative UI work.
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+        event.respondWith(networkFirstResponse(STATIC_CACHE, request));
+        return;
+    }
+
+    // Cache-first for versioned static assets so the shell still loads offline.
+    if (url.pathname.startsWith("/assets/")) {
         event.respondWith(cacheFirstResponse(STATIC_CACHE, request));
         return;
     }
@@ -70,6 +73,24 @@ async function cacheFirstResponse(cacheName, request) {
         return response;
     } catch {
         return new Response("Offline — cached version unavailable.", {
+            status: 503,
+            headers: { "Content-Type": "text/plain" }
+        });
+    }
+}
+
+async function networkFirstResponse(cacheName, request) {
+    const cache = await caches.open(cacheName);
+
+    try {
+        const response = await fetch(request);
+        if (response.ok) {
+            cache.put(request, response.clone());
+        }
+        return response;
+    } catch {
+        const cached = await cache.match(request);
+        return cached ?? new Response("Offline — cached version unavailable.", {
             status: 503,
             headers: { "Content-Type": "text/plain" }
         });

@@ -213,6 +213,18 @@ public class SeedDataLoader {
             GuestProfile devon = guestProfileRepository.save(buildGuest("Devon", null, null, null, "No legal name provided."));
             GuestProfile jules = guestProfileRepository.save(buildGuest("Jules", null, LocalDate.of(2006, 11, 1), "604-555-0104", "Youth guest."));
             GuestProfile sam = guestProfileRepository.save(buildGuest("Sam K.", "Samuel Khan", LocalDate.of(1981, 2, 14), "604-555-0105", null));
+            GuestProfile jamie = guestProfileRepository.save(buildGuest("Jamie T.", "Jamie Thompson", LocalDate.of(1990, 8, 21), "604-555-0110", "Needs a lower bunk."));
+            GuestProfile priya = guestProfileRepository.save(buildGuest("Priya", null, LocalDate.of(1987, 3, 11), "604-555-0111", "Prefers text contact."));
+            GuestProfile noah = guestProfileRepository.save(buildGuest("Noah B.", "Noah Brown", LocalDate.of(1975, 12, 2), "604-555-0112", "Uses a cane."));
+            GuestProfile avery = guestProfileRepository.save(buildGuest("Avery", null, LocalDate.of(1998, 6, 17), null, "No phone; check in through outreach."));
+            GuestProfile riley = guestProfileRepository.save(buildGuest("Riley C.", "Riley Chen", LocalDate.of(1995, 1, 29), "604-555-0114", null));
+            GuestProfile morgan = guestProfileRepository.save(buildGuest("Morgan", null, null, "604-555-0115", "Travelling with a service animal."));
+            GuestProfile lee = guestProfileRepository.save(buildGuest("Lee P.", "Lee Park", LocalDate.of(1968, 10, 5), "604-555-0116", "Requires wheelchair access."));
+            GuestProfile fatima = guestProfileRepository.save(buildGuest("Fatima A.", "Fatima Ahmed", LocalDate.of(1991, 5, 23), "604-555-0117", "Parent with one child."));
+            GuestProfile chris = guestProfileRepository.save(buildGuest("Chris", null, LocalDate.of(1983, 7, 7), "604-555-0118", null));
+            GuestProfile sky = guestProfileRepository.save(buildGuest("Sky", null, LocalDate.of(2009, 2, 15), null, "Youth referral; confidential callback through worker."));
+            GuestProfile taylor = guestProfileRepository.save(buildGuest("Taylor M.", "Taylor Morgan", LocalDate.of(1988, 11, 30), "604-555-0120", "Works an evening shift."));
+            GuestProfile robin = guestProfileRepository.save(buildGuest("Robin", null, LocalDate.of(1979, 4, 9), "604-555-0121", "Needs medication refrigeration."));
 
             shelterBookingRepository.save(buildBooking(gatewayHope, alex, BookingStatus.CHECKED_IN, BookingChannel.PHONE,
                     LocalDate.now().plusDays(1), "Intake Desk", "Dana", "Dana", null,
@@ -240,12 +252,45 @@ public class SeedDataLoader {
                     LocalDateTime.now().minusDays(1).plusHours(2), LocalDateTime.now().minusHours(1),
                     "Stayed one night"));
 
-            turnAwayLogRepository.save(buildTurnAway(stevensonHouse, null, TurnAwayReason.INTAKE_CLOSED,
+            shelterBookingRepository.save(buildDemoBooking(gatewayHope, jamie, BookingStatus.REQUESTED,
+                    BookingChannel.APP, 15, "Public Web", "Lower bunk requested if available."));
+            shelterBookingRepository.save(buildDemoBooking(catholicMens, priya, BookingStatus.WAITLISTED,
+                    BookingChannel.PHONE, 45, "211 Referral", "Waiting for the next opening."));
+            shelterBookingRepository.save(buildDemoBooking(beacon, noah, BookingStatus.ADMITTED,
+                    BookingChannel.STAFF_MANUAL, 80, "Outreach Team", "Approved; arrival expected before 9 p.m."));
+            shelterBookingRepository.save(buildDemoBooking(theHaven, avery, BookingStatus.CHECKED_IN,
+                    BookingChannel.WALK_IN, 130, "Front Desk", "Checked in with outreach support."));
+            shelterBookingRepository.save(buildDemoBooking(rockBay, riley, BookingStatus.REJECTED,
+                    BookingChannel.PHONE, 190, "Crisis Line", "Referred to another site after intake screening."));
+            shelterBookingRepository.save(buildDemoBooking(springhouse, morgan, BookingStatus.CANCELLED,
+                    BookingChannel.APP, 240, "Public Web", "Guest found alternate accommodation."));
+            shelterBookingRepository.save(buildDemoBooking(northShore, lee, BookingStatus.CHECKED_OUT,
+                    BookingChannel.STAFF_MANUAL, 360, "Hospital Discharge", "Accessible placement completed."));
+            shelterBookingRepository.save(buildDemoBooking(rosewood, fatima, BookingStatus.REQUESTED,
+                    BookingChannel.PHONE, 25, "Family Support Worker", "Family room requested."));
+            shelterBookingRepository.save(buildDemoBooking(stevensonHouse, chris, BookingStatus.WAITLISTED,
+                    BookingChannel.WALK_IN, 55, "Front Desk", "Will return if staff call."));
+            shelterBookingRepository.save(buildDemoBooking(youthSafeHouse, sky, BookingStatus.REQUESTED,
+                    BookingChannel.PHONE, 10, "Youth Worker", "Confidential youth placement request."));
+            shelterBookingRepository.save(buildDemoBooking(centreHope, taylor, BookingStatus.ADMITTED,
+                    BookingChannel.APP, 95, "Public Web", "Late arrival approved by intake."));
+            shelterBookingRepository.save(buildDemoBooking(gatewayHope, robin, BookingStatus.CHECKED_IN,
+                    BookingChannel.PHONE, 150, "Community Clinic", "Medication stored with staff."));
+
+            turnAwayLogRepository.save(buildTurnAway(stevensonHouse, chris, TurnAwayReason.INTAKE_CLOSED,
                     "Arrived after 10 p.m. cutoff.", "Night Staff"));
             turnAwayLogRepository.save(buildTurnAway(rockBay, devon, TurnAwayReason.NO_BEDS_AVAILABLE,
                     "No overflow space left by 11 p.m.", "Front Desk"));
-            turnAwayLogRepository.save(buildTurnAway(theHaven, null, TurnAwayReason.BEHAVIOUR_RESTRICTION,
+            turnAwayLogRepository.save(buildTurnAway(theHaven, avery, TurnAwayReason.BEHAVIOUR_RESTRICTION,
                     "Door assessment did not clear intake.", "Intake Lead"));
+            turnAwayLogRepository.save(buildTurnAway(catholicMens, chris, TurnAwayReason.NO_BEDS_AVAILABLE,
+                    "Added to the call-back list after capacity was reached.", "Night Intake"));
+            turnAwayLogRepository.save(buildTurnAway(northShore, lee, TurnAwayReason.REFERRED_ELSEWHERE,
+                    "Referred to an accessible bed at another location.", "Outreach Desk"));
+            turnAwayLogRepository.save(buildTurnAway(rosewood, fatima, TurnAwayReason.INTAKE_CLOSED,
+                    "Referral arrived after the intake cutoff.", "Family Intake"));
+            turnAwayLogRepository.save(buildTurnAway(gatewayHope, robin, TurnAwayReason.OTHER,
+                    "Guest chose not to complete intake and left voluntarily.", "Front Desk"));
         };
     }
 
@@ -354,6 +399,42 @@ public class SeedDataLoader {
         booking.setCheckedOutAt(checkedOutAt);
         booking.setDecisionNotes(notes);
         booking.setIntakeNotes(notes);
+        return booking;
+    }
+
+    private ShelterBooking buildDemoBooking(
+            Shelter shelter,
+            GuestProfile guest,
+            BookingStatus status,
+            BookingChannel channel,
+            int requestedMinutesAgo,
+            String requestedBy,
+            String notes
+    ) {
+        LocalDateTime requestedAt = LocalDateTime.now().minusMinutes(requestedMinutesAgo);
+        ShelterBooking booking = new ShelterBooking();
+        booking.setShelter(shelter);
+        booking.setGuest(guest);
+        booking.setStatus(status);
+        booking.setRequestChannel(channel);
+        booking.setRequestedBedDate(LocalDate.now().plusDays(status == BookingStatus.CHECKED_OUT ? 0 : 1));
+        booking.setRequestedBy(requestedBy);
+        booking.setRequestedAt(requestedAt);
+        booking.setIntakeNotes(notes);
+
+        if (status != BookingStatus.REQUESTED) {
+            booking.setDecidedAt(requestedAt.plusMinutes(20));
+            booking.setDecidedBy("Demo Intake Staff");
+            booking.setDecisionNotes(notes);
+        }
+        if (status == BookingStatus.CHECKED_IN || status == BookingStatus.CHECKED_OUT) {
+            booking.setCheckedInAt(requestedAt.plusMinutes(45));
+            booking.setCheckedInBy("Demo Front Desk");
+        }
+        if (status == BookingStatus.CHECKED_OUT) {
+            booking.setCheckedOutAt(requestedAt.plusHours(2));
+            booking.setCheckedOutBy("Demo Front Desk");
+        }
         return booking;
     }
 

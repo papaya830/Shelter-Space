@@ -64,28 +64,73 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Guest not found: " + request.getGuestId()));
         validateBookingPreconditions(shelter, guest);
         return createBooking(shelter, guest, request.getRequestedBedDate(), request.getRequestChannel(),
-                request.getRequestedBy(), request.getIntakeNotes());
+                request.getRequestedBy(), request.getIntakeNotes(), BookingStatus.REQUESTED);
     }
 
     @Transactional
     public BookingResponse createPublicRequest(PublicBookingRequest request) {
         Shelter shelter = getShelterEntity(request.getShelterId());
 
-        GuestProfile guest = new GuestProfile();
-        guest.setDisplayName(trimToNull(request.getDisplayName()));
-        guest.setLegalName(trimToNull(request.getLegalName()));
-        guest.setBirthDate(request.getBirthDate());
-        guest.setPhoneNumber(trimToNull(request.getPhoneNumber()));
-        guest = guestProfileRepository.save(guest);
+        if (shelter.getOperationalStatus() == ShelterStatus.TEMPORARILY_CLOSED) {
+            throw new BookingConflictException("Cannot register at a temporarily closed shelter.");
+        }
+        if (!shelter.hasCapacity()) {
+            throw new BookingConflictException(shelter.isSupportsWaitlist()
+                    ? "Shelter is full. Join its waitlist instead."
+                    : "Shelter is full and is not accepting a waitlist.");
+        }
 
+        GuestProfile guest = createPublicGuest(request);
         return createBooking(
                 shelter,
                 guest,
                 request.getRequestedBedDate(),
                 BookingChannel.APP,
-                request.getRequestedBy() != null && !request.getRequestedBy().isBlank() ? request.getRequestedBy() : "Public Web",
-                request.getIntakeNotes()
+                publicRequestedBy(request),
+                request.getIntakeNotes(),
+                BookingStatus.REQUESTED
         );
+    }
+
+    @Transactional
+    public BookingResponse createPublicWaitlistRequest(PublicBookingRequest request) {
+        Shelter shelter = getShelterEntity(request.getShelterId());
+        if (shelter.getOperationalStatus() == ShelterStatus.TEMPORARILY_CLOSED) {
+            throw new BookingConflictException("Cannot join the waitlist for a temporarily closed shelter.");
+        }
+        if (shelter.hasCapacity()) {
+            throw new BookingConflictException("Shelter has beds available. Send a booking request instead.");
+        }
+        if (!shelter.isSupportsWaitlist()) {
+            throw new BookingConflictException("Shelter is full and is not accepting a waitlist.");
+        }
+
+        GuestProfile guest = createPublicGuest(request);
+        return createBooking(
+                shelter,
+                guest,
+                request.getRequestedBedDate(),
+                BookingChannel.APP,
+                publicRequestedBy(request),
+                request.getIntakeNotes(),
+                BookingStatus.WAITLISTED
+        );
+    }
+
+    private GuestProfile createPublicGuest(PublicBookingRequest request) {
+
+        GuestProfile guest = new GuestProfile();
+        guest.setDisplayName(trimToNull(request.getDisplayName()));
+        guest.setLegalName(trimToNull(request.getLegalName()));
+        guest.setBirthDate(request.getBirthDate());
+        guest.setPhoneNumber(trimToNull(request.getPhoneNumber()));
+        return guestProfileRepository.save(guest);
+    }
+
+    private String publicRequestedBy(PublicBookingRequest request) {
+        return request.getRequestedBy() != null && !request.getRequestedBy().isBlank()
+                ? request.getRequestedBy()
+                : "Public Web";
     }
 
     @Transactional
@@ -106,7 +151,8 @@ public class BookingService {
                 requestedBedDate,
                 BookingChannel.SMS,
                 requestedBy == null || requestedBy.isBlank() ? "Chatbot" : requestedBy,
-                intakeNotes
+                intakeNotes,
+                BookingStatus.REQUESTED
         );
     }
 
@@ -237,7 +283,8 @@ public class BookingService {
             java.time.LocalDate requestedBedDate,
             com.enactus.shelterspace.model.enums.BookingChannel requestChannel,
             String requestedBy,
-            String intakeNotes
+            String intakeNotes,
+            BookingStatus initialStatus
     ) {
         validateBookingPreconditions(shelter, guest);
 
@@ -248,7 +295,7 @@ public class BookingService {
         booking.setRequestChannel(requestChannel);
         booking.setRequestedBy(trimToNull(requestedBy));
         booking.setIntakeNotes(trimToNull(intakeNotes));
-        booking.setStatus(BookingStatus.REQUESTED);
+        booking.setStatus(initialStatus);
         return BookingResponse.fromEntity(shelterBookingRepository.save(booking));
     }
 

@@ -35,6 +35,7 @@ public class KeywordChatbotService {
     private final ShelterRepository shelterRepository;
     private final GuestProfileRepository guestProfileRepository;
     private final BookingService bookingService;
+    private final OllamaChatService ollamaChatService;
 
     private final Map<String, ChatSession> sessions = new ConcurrentHashMap<>();
 
@@ -42,7 +43,7 @@ public class KeywordChatbotService {
         String clientSessionId = safeTrim(request.getClientSessionId());
         String alias = safeTrim(request.getAlias());
         String rawMessage = safeTrim(request.getMessage());
-        String normalized = normalizeInput(rawMessage);
+        String normalized = resolveCommand(rawMessage);
 
         ChatSession session = sessions.computeIfAbsent(clientSessionId, ignored -> new ChatSession());
         if (isExpired(session)) {
@@ -84,10 +85,58 @@ public class KeywordChatbotService {
             case CHOOSING -> handleChoice(session, normalized);
             case DURATION -> handleDuration(session, normalized);
             case CONFIRM -> handleConfirm(session, normalized);
-            case WAITING, IDLE -> respond(session,
-                    "I can only follow chat keywords right now. Send BED to start a bed request.",
-                    List.of("BED", "STATUS", "CANCEL", "HELP"));
+            case WAITING, IDLE -> handleOpenQuestion(session, rawMessage);
         };
+    }
+
+    private ChatbotMessageResponse handleOpenQuestion(ChatSession session, String rawMessage) {
+        List<Shelter> shelters = shelterRepository.findAll(Sort.by(Sort.Order.asc("city"), Sort.Order.asc("name")));
+        String normalized = normalizeInput(rawMessage);
+        if (normalized.contains("WHEELCHAIR") || normalized.contains("ACCESSIBLE")) {
+            return respondWithMatchingShelters(session, shelters.stream()
+                    .filter(Shelter::isWheelchairAccessible)
+                    .filter(this::hasUsableBed)
+                    .toList(), "wheelchair-accessible shelters with space");
+        }
+        if (normalized.contains("PET") || normalized.contains("DOG") || normalized.contains("CAT")) {
+            return respondWithMatchingShelters(session, shelters.stream()
+                    .filter(Shelter::isPetsAllowed)
+                    .filter(this::hasUsableBed)
+                    .toList(), "pet-friendly shelters with space");
+        }
+        if (normalized.contains("AVAILABLE") || normalized.contains("AVAILABILITY")
+                || (normalized.contains("SHELTER") && normalized.contains("SPACE"))) {
+            return respondWithMatchingShelters(session, shelters.stream()
+                    .filter(this::hasUsableBed)
+                    .sorted(Comparator.comparing(Shelter::getAvailableBeds).reversed())
+                    .toList(), "shelters with space");
+        }
+        return ollamaChatService.answer(rawMessage, session.state.name(), shelters)
+                .map(answer -> respond(session, answer, List.of("BED", "STATUS", "CANCEL", "HELP")))
+                .orElseGet(() -> respond(session,
+                        "I can help with shelter questions when the local assistant is running. Send BED to request a bed, or HELP for commands.",
+                        List.of("BED", "STATUS", "CANCEL", "HELP")));
+    }
+
+    private ChatbotMessageResponse respondWithMatchingShelters(
+            ChatSession session,
+            List<Shelter> matches,
+            String description
+    ) {
+        if (matches.isEmpty()) {
+            return respond(session, "I cannot find any " + description + " right now.", List.of("BED", "HELP"));
+        }
+        String result = matches.stream()
+                .map(shelter -> shelter.getName() + " (" + shelter.getAvailableBeds() + " bed(s))")
+                .limit(5)
+                .reduce((left, right) -> left + "; " + right)
+                .orElse("");
+        return respond(session, "Current " + description + ": " + result + ".", List.of("BED", "HELP"));
+    }
+
+    private boolean hasUsableBed(Shelter shelter) {
+        return shelter.getAvailableBeds() > 0
+                && shelter.getOperationalStatus() != ShelterStatus.TEMPORARILY_CLOSED;
     }
 
     private ChatbotMessageResponse beginShelterChoice(ChatSession session) {
@@ -404,6 +453,30 @@ public class KeywordChatbotService {
 
     private String normalizeInput(String value) {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String resolveCommand(String value) {
+        String normalized = normalizeInput(value);
+        if (List.of("BED", "STATUS", "CANCEL", "DIR", "HELP", "MORE", "YES", "NO").contains(normalized)
+                || parsePositiveInt(normalized) != null) {
+            return normalized;
+        }
+
+        String words = " " + normalized.replaceAll("[^A-Z0-9]+", " ").trim() + " ";
+        if (words.matches(".*\\b(NEED|FIND|WANT|REQUEST|LOOKING)\\b.*\\b(BED|SHELTER|PLACE TO STAY)\\b.*")) {
+            return "BED";
+        }
+        if (words.matches(".*\\b(BOOKING|REQUEST)\\b.*\\b(STATUS|UPDATE|PROGRESS)\\b.*")
+                || words.contains(" CHECK MY STATUS ")) {
+            return "STATUS";
+        }
+        if (words.matches(".*\\b(CANCEL|WITHDRAW)\\b.*\\b(BOOKING|REQUEST|BED)\\b.*")) {
+            return "CANCEL";
+        }
+        if (words.matches(".*\\b(WHERE|DIRECTION|DIRECTIONS|ADDRESS)\\b.*\\b(SHELTER|GO|BOOKING)\\b.*")) {
+            return "DIR";
+        }
+        return normalized;
     }
 
     private Integer parsePositiveInt(String value) {
